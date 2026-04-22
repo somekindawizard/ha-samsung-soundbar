@@ -1,0 +1,49 @@
+set_speaker_level:
+  name: Set Speaker Level
+  description: Adjust the volume of an individual speaker channel (center, side, rear, etc.)
+  target:
+    device:
+      integration: samsung_soundbar
+  fields:
+    speaker_channel:
+      name: Speaker Channel
+      description: Which speaker to adjust
+      required: true
+      example: "Spk_Center"
+      selector:
+        select:
+          options:
+            - "Spk_Center"
+            - "Spk_Side"
+            - "Spk_Wide"
+            - "Spk_Front_Top"
+            - "Spk_Rear"
+            - "Spk_Rear_Top"
+    level:
+      name: Level
+      description: Volume level (-6 to +6)
+      required: true
+      example: 0
+      selector:
+        number:
+          min: -6
+          max: 6
+          step: 1
+
+set_rear_speaker_mode:
+  name: Set Rear Speaker Mode
+  description: Switch rear speakers between front and rear positioning
+  target:
+    device:
+      integration: samsung_soundbar
+  fields:
+    mode:
+      name: Mode
+      description: Front or Rear
+      required: true
+      example: "Rear"
+      selector:
+        select:
+          options:
+            - "Front"
+            - "Rear"
