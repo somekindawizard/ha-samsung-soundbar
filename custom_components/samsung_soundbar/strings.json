@@ -4,26 +4,38 @@
       "user": {
         "title": "Samsung Soundbar",
         "description": "Choose how to authenticate with SmartThings.",
-        "data": { "auth_method": "Authentication Method" }
+        "data": {
+          "auth_method": "Authentication Method"
+        }
       },
       "oauth_creds": {
         "title": "SmartThings OAuth Credentials",
         "description": "Enter your SmartThings OAuth Client ID and Secret.",
-        "data": { "client_id": "Client ID", "client_secret": "Client Secret" }
+        "data": {
+          "client_id": "Client ID",
+          "client_secret": "Client Secret"
+        }
       },
       "authorize": {
         "title": "Authorize with SmartThings",
-        "description": "1. Open this URL:\n\n{auth_url}\n\n2. Log in and authorize.\n3. Copy the code from the redirect URL.\n4. Paste it below.",
-        "data": { "auth_code": "Authorization Code" }
+        "description": "1. Open this URL in your browser:\n\n{auth_url}\n\n2. Log in with your Samsung account and authorize.\n3. The page will say \"All set!\" \u2014 look in your browser's **URL bar**.\n4. Copy the value after `code=` from the URL (stop before any `&`).\n5. Paste it below.",
+        "data": {
+          "auth_code": "Authorization Code"
+        }
       },
       "pat": {
         "title": "Personal Access Token",
         "description": "Generate a token at https://account.smartthings.com/tokens with device scopes enabled. PATs expire after 24 hours.",
-        "data": { "personal_access_token": "Personal Access Token" }
+        "data": {
+          "personal_access_token": "Personal Access Token"
+        }
       },
       "device": {
         "title": "Select Your Soundbar",
-        "data": { "device_id": "Device", "max_volume": "Maximum Volume" }
+        "data": {
+          "device_id": "Device",
+          "max_volume": "Maximum Volume"
+        }
       }
     },
     "error": {
