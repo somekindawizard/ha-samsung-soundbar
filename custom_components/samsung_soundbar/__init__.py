@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant.const import Platform
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -111,8 +112,9 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
     async def handle_set_speaker_level(call: ServiceCall) -> None:
         coordinator = _get_coordinator_for_device(hass, call)
         if not coordinator:
-            _LOGGER.error("No soundbar device found for service call")
-            return
+            raise HomeAssistantError(
+                "No soundbar device found for service call"
+            )
         channel = call.data["speaker_channel"]
         level = call.data["level"]
         await coordinator.client.send_execute_command(
@@ -121,12 +123,14 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
             {PROP_CHANNEL_VOLUME: [{"name": channel, "value": level}]},
         )
         _LOGGER.info("Set %s level to %d", channel, level)
+        await coordinator.async_request_refresh()
 
     async def handle_set_rear_speaker_mode(call: ServiceCall) -> None:
         coordinator = _get_coordinator_for_device(hass, call)
         if not coordinator:
-            _LOGGER.error("No soundbar device found for service call")
-            return
+            raise HomeAssistantError(
+                "No soundbar device found for service call"
+            )
         mode = call.data["mode"]
         await coordinator.client.send_execute_command(
             coordinator.device_id,
@@ -134,6 +138,7 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
             {PROP_REAR_POSITION: mode},
         )
         _LOGGER.info("Set rear speaker mode to %s", mode)
+        await coordinator.async_request_refresh()
 
     async def handle_apply_preset(call: ServiceCall) -> None:
         """Apply a sound preset atomically.
@@ -144,8 +149,9 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
         """
         coordinator = _get_coordinator_for_device(hass, call)
         if not coordinator:
-            _LOGGER.error("No soundbar device found for service call")
-            return
+            raise HomeAssistantError(
+                "No soundbar device found for service call"
+            )
 
         device_id = coordinator.device_id
         client = coordinator.client
