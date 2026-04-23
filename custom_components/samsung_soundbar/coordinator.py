@@ -8,7 +8,7 @@ update() calls.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from typing import Any
 
@@ -60,7 +60,7 @@ class SoundbarState:
 
     # Sound mode
     sound_mode: str = ""
-    supported_sound_modes: list[str] = field(default_factory=lambda: ["adaptive sound", "standard", "surround", "game"])
+    supported_sound_modes: list[str] = field(default_factory=list)
 
     # Advanced audio
     night_mode: bool = False
@@ -81,6 +81,14 @@ class SoundbarState:
     media_title: str = ""
     media_artist: str = ""
     playback_status: str = ""
+    media_elapsed_time: int | None = None
+    media_total_time: int | None = None
+
+    # Capability support (read from device status, used to set features)
+    supported_playback_commands: list[str] = field(
+        default_factory=lambda: ["play", "pause", "stop"]
+    )
+    supported_track_control_commands: list[str] = field(default_factory=list)
 
     # Device info (set once on first poll)
     manufacturer: str = "Samsung"
@@ -116,7 +124,14 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
         self._ocf_index = 0
 
     async def _async_update_data(self) -> SoundbarState:
-        """Fetch all device data in one coordinator cycle."""
+        """Fetch all device data in one coordinator cycle.
+
+        OCF endpoints are polled one-at-a-time on a rotating basis to
+        avoid SmartThings 429 rate limiting.  To avoid losing state for
+        endpoints that were NOT polled this cycle, we start from a copy
+        of the previous state and only overwrite the fields that were
+        actually fetched.
+        """
         try:
             # Ensure token is fresh before any API calls
             await self.client.ensure_token()
@@ -128,10 +143,12 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
             if not status:
                 raise UpdateFailed("Could not reach SmartThings API")
 
-            state = SoundbarState()
+            # Start from previous state so un-polled OCF fields are
+            # preserved automatically.  On first poll we start fresh.
+            state = replace(self.data) if self.data else SoundbarState()
             main = status.get("components", {}).get("main", {})
 
-            # ── Standard capabilities ────────────────────────────
+            # -- Standard capabilities (always fetched) ----------------
             # Power
             switch_val = _nested(main, "switch", "switch", "value")
             state.power = switch_val == "on" if switch_val else False
@@ -150,41 +167,65 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
             )
             state.supported_input_sources = supported if isinstance(supported, list) else []
 
-            # Media
-            state.playback_status = _nested(main, "mediaPlayback", "playbackStatus", "value") or ""
+            # Media playback
+            state.playback_status = (
+                _nested(main, "mediaPlayback", "playbackStatus", "value") or ""
+            )
+
+            # Supported playback commands (mediaPlayback capability)
+            pb_cmds = _nested(
+                main, "mediaPlayback", "supportedPlaybackCommands", "value"
+            )
+            if isinstance(pb_cmds, list) and pb_cmds:
+                state.supported_playback_commands = pb_cmds
+
+            # Supported track control commands (mediaTrackControl capability)
+            tc_cmds = _nested(
+                main, "mediaTrackControl", "supportedTrackControlCommands", "value"
+            )
+            if isinstance(tc_cmds, list):
+                state.supported_track_control_commands = tc_cmds
+
+            # Audio track data (title, artist, elapsed/total time)
             track_data = _nested(main, "audioTrackData", "audioTrackData", "value")
             if isinstance(track_data, dict):
                 state.media_title = track_data.get("title", "")
                 state.media_artist = track_data.get("artist", "")
 
-            # Device info (first poll only)
-            if self._first_poll:
-                state.manufacturer = _nested(main, "ocf", "mnfv", "value") or "Samsung"
-                state.model = _nested(main, "ocf", "mnmo", "value") or ""
-                state.firmware_version = _nested(main, "ocf", "mnfv", "value") or ""
-                # Try the proper fields
-                mfr = _nested(main, "ocf", "manufacturerName", "value")
-                if mfr:
-                    state.manufacturer = mfr
-                mdl = _nested(main, "ocf", "modelNumber", "value")
-                if mdl:
-                    state.model = mdl
-                fw = _nested(main, "ocf", "firmwareVersion", "value")
-                if fw:
-                    state.firmware_version = fw
-                self._first_poll = False
-            else:
-                # Carry forward from previous data
-                prev = self.data
-                if prev:
-                    state.manufacturer = prev.manufacturer
-                    state.model = prev.model
-                    state.firmware_version = prev.firmware_version
+            elapsed = _nested(main, "audioTrackData", "elapsedTime", "value")
+            state.media_elapsed_time = elapsed if isinstance(elapsed, int) else None
 
-            # ── OCF custom capabilities ──────────────────────────
-            # Rotate through one OCF endpoint per poll cycle to avoid
-            # SmartThings 429 rate limiting. Each cycle fetches at most
-            # one OCF endpoint, so a full refresh takes ~2 minutes.
+            total = _nested(main, "audioTrackData", "totalTime", "value")
+            state.media_total_time = total if isinstance(total, int) else None
+
+            # Device info (first poll only)
+            #
+            # OCF short codes:
+            #   mnmn -> manufacturer name
+            #   mnmo -> model number
+            #   mnfv -> manufacturer's firmware version
+            if self._first_poll:
+                manufacturer = (
+                    _nested(main, "ocf", "manufacturerName", "value")
+                    or _nested(main, "ocf", "mnmn", "value")
+                    or "Samsung"
+                )
+                model = (
+                    _nested(main, "ocf", "modelNumber", "value")
+                    or _nested(main, "ocf", "mnmo", "value")
+                    or ""
+                )
+                firmware = (
+                    _nested(main, "ocf", "firmwareVersion", "value")
+                    or _nested(main, "ocf", "mnfv", "value")
+                    or ""
+                )
+                state.manufacturer = manufacturer
+                state.model = model
+                state.firmware_version = firmware
+                self._first_poll = False
+
+            # -- OCF custom capabilities (rotated) ---------------------
             ocf_targets = []
             if self.options.get(OPT_ENABLE_SOUNDMODE, True):
                 ocf_targets.append("soundmode")
@@ -243,29 +284,6 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
                             state.eq_bands = eq_data.get(PROP_EQ_BANDS, [])
                 except Exception:
                     _LOGGER.debug("OCF poll for %s failed, will retry next cycle", target)
-
-            # Carry forward OCF state from previous poll for endpoints
-            # not fetched this cycle
-            prev = self.data
-            if prev:
-                if not state.sound_mode and prev.sound_mode:
-                    state.sound_mode = prev.sound_mode
-                if not state.supported_sound_modes and prev.supported_sound_modes:
-                    state.supported_sound_modes = prev.supported_sound_modes
-                if state.woofer_level == 0 and prev.woofer_level != 0:
-                    state.woofer_level = prev.woofer_level
-                if not state.night_mode and prev.night_mode:
-                    state.night_mode = prev.night_mode
-                if not state.voice_amplifier and prev.voice_amplifier:
-                    state.voice_amplifier = prev.voice_amplifier
-                if not state.bass_boost and prev.bass_boost:
-                    state.bass_boost = prev.bass_boost
-                if not state.woofer_connection and prev.woofer_connection:
-                    state.woofer_connection = prev.woofer_connection
-                if not state.eq_preset and prev.eq_preset:
-                    state.eq_preset = prev.eq_preset
-                if not state.supported_eq_presets and prev.supported_eq_presets:
-                    state.supported_eq_presets = prev.supported_eq_presets
 
             return state
 
