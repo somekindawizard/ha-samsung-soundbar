@@ -7,6 +7,18 @@
   "integration_type": "device",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/somekindawizard/ha-samsung-soundbar/issues",
-  "requirements": ["aiohttp>=3.9.0"],
-  "version": "1.0.0"
+  "loggers": ["custom_components.samsung_soundbar"],
+  "requirements": [],
+  "version": "1.0.0",
+  "zeroconf": [
+    {
+      "type": "_soundbar._tcp.local."
+    },
+    {
+      "type": "_spotify-connect._tcp.local.",
+      "properties": {
+        "manufacturer": "samsung*"
+      }
+    }
+  ]
 }
