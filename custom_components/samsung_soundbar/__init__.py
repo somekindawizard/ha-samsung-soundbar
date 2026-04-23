@@ -6,6 +6,7 @@ import logging
 
 import voluptuous as vol
 
+from homeassistant.const import Platform
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
@@ -37,7 +38,13 @@ from .coordinator import SoundbarCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["media_player", "switch", "select", "number", "sensor"]
+PLATFORMS: list[Platform] = [
+    Platform.MEDIA_PLAYER,
+    Platform.SWITCH,
+    Platform.SELECT,
+    Platform.NUMBER,
+    Platform.SENSOR,
+]
 
 SERVICE_SET_SPEAKER_LEVEL = "set_speaker_level"
 SERVICE_SET_REAR_SPEAKER_MODE = "set_rear_speaker_mode"
@@ -123,6 +130,11 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
     )
 
 
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the integration when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
 
@@ -164,6 +176,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _async_setup_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Reload when the user changes options (feature toggles)
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     return True
 
 
