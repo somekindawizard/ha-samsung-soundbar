@@ -11,6 +11,8 @@ for users who want them as separate entities in dashboards or automations.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -105,9 +107,11 @@ class SoundModeSelect(_SoundbarSelect):
         await self.coordinator.client.send_execute_command(
             self._device_id, HREF_SOUNDMODE, {PROP_SOUNDMODE: option}
         )
+        # Optimistic update via coordinator so all listeners are notified
         if self.coordinator.data:
-            self.coordinator.data.sound_mode = option
-            self.async_write_ha_state()
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, sound_mode=option)
+            )
 
 
 class EqPresetSelect(_SoundbarSelect):
@@ -132,7 +136,11 @@ class EqPresetSelect(_SoundbarSelect):
         await self.coordinator.client.send_execute_command(
             self._device_id, HREF_EQ, {PROP_EQ_NAME: option}
         )
-        await self.coordinator.async_request_refresh()
+        # Optimistic update via coordinator so all listeners are notified
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, eq_preset=option)
+            )
 
 
 class InputSourceSelect(_SoundbarSelect):
@@ -157,4 +165,8 @@ class InputSourceSelect(_SoundbarSelect):
         await self.coordinator.client.send_standard_command(
             self._device_id, "samsungvd.audioInputSource", "setInputSource", [option]
         )
-        await self.coordinator.async_request_refresh()
+        # Optimistic update via coordinator so all listeners are notified
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, input_source=option)
+            )
