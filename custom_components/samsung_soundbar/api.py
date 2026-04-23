@@ -34,6 +34,14 @@ BACKOFF_MAX = 30.0  # seconds
 JITTER_MAX = 0.5  # seconds
 
 
+class SoundbarAuthError(Exception):
+    """Raised when the SmartThings API returns 401/403 (credentials invalid)."""
+
+
+class SoundbarCommandError(Exception):
+    """Raised when a command to the soundbar fails."""
+
+
 @dataclass
 class TokenData:
     """In-memory representation of OAuth tokens."""
@@ -75,7 +83,7 @@ class SmartThingsClient:
         # Status cache (device_id -> cached response)
         self._status_cache: dict[str, _CacheEntry] = {}
 
-    # ── Token helpers ────────────────────────────────────────────────
+    # -- Token helpers --------------------------------------------------
 
     @property
     def access_token(self) -> str:
@@ -120,6 +128,14 @@ class SmartThingsClient:
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
             ) as resp:
+                if resp.status in (401, 403):
+                    _LOGGER.error(
+                        "Token refresh failed with %s: credentials may be invalid",
+                        resp.status,
+                    )
+                    raise SoundbarAuthError(
+                        f"Token refresh failed with HTTP {resp.status}"
+                    )
                 resp.raise_for_status()
                 body = await resp.json()
 
@@ -135,6 +151,8 @@ class SmartThingsClient:
                 expires_at=time.time() + expires_in,
             )
             _LOGGER.info("SmartThings token refreshed successfully")
+        except SoundbarAuthError:
+            raise
         except Exception:
             _LOGGER.exception("Failed to refresh SmartThings token")
             raise
@@ -147,7 +165,7 @@ class SmartThingsClient:
             "token_expires_at": self._tokens.expires_at,
         }
 
-    # ── HTTP helpers ─────────────────────────────────────────────────
+    # -- HTTP helpers ---------------------------------------------------
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -165,6 +183,8 @@ class SmartThingsClient:
 
         Respects the Retry-After header when present. Falls back to
         exponential backoff with jitter.
+
+        Raises SoundbarAuthError on 401/403 so callers can trigger reauth.
         """
         await self.ensure_token()
         url = f"{ST_API_BASE}{path}"
@@ -175,6 +195,16 @@ class SmartThingsClient:
                 async with self._session.request(
                     method, url, json=json, headers=self._headers()
                 ) as resp:
+                    # Auth failures: raise immediately so HA can trigger reauth
+                    if resp.status in (401, 403):
+                        _LOGGER.error(
+                            "SmartThings API %s %s returned %s: auth invalid",
+                            method, path, resp.status,
+                        )
+                        raise SoundbarAuthError(
+                            f"SmartThings API returned HTTP {resp.status}"
+                        )
+
                     if resp.status == 429:
                         retry_after = resp.headers.get("Retry-After")
                         if retry_after:
@@ -201,6 +231,8 @@ class SmartThingsClient:
                     if resp.content_type and "json" in resp.content_type:
                         return await resp.json()
                     return None
+            except SoundbarAuthError:
+                raise
             except aiohttp.ClientResponseError as err:
                 last_error = err
                 if err.status != 429 or attempt >= MAX_RETRIES:
@@ -219,15 +251,19 @@ class SmartThingsClient:
             raise last_error
         return None
 
-    # ── Device commands ──────────────────────────────────────────────
+    # -- Device commands ------------------------------------------------
 
     async def send_execute_command(
         self,
         device_id: str,
         href: str,
         payload: dict[str, Any],
-    ) -> bool:
-        """Send an OCF execute command (the undocumented /sec/networkaudio endpoints)."""
+    ) -> None:
+        """Send an OCF execute command.
+
+        Raises SoundbarCommandError on failure.
+        Raises SoundbarAuthError on 401/403.
+        """
         body = {
             "commands": [
                 {
@@ -241,10 +277,12 @@ class SmartThingsClient:
         try:
             await self._request("POST", f"/devices/{device_id}/commands", json=body)
             _LOGGER.debug("Execute: %s %s", href, payload)
-            return True
-        except Exception:
-            _LOGGER.error("Execute failed: %s", href)
-            return False
+        except SoundbarAuthError:
+            raise
+        except Exception as err:
+            raise SoundbarCommandError(
+                f"Failed to execute {href}: {err}"
+            ) from err
 
     async def send_standard_command(
         self,
@@ -252,8 +290,12 @@ class SmartThingsClient:
         capability: str,
         command: str,
         args: list[Any] | None = None,
-    ) -> bool:
-        """Send a standard SmartThings capability command."""
+    ) -> None:
+        """Send a standard SmartThings capability command.
+
+        Raises SoundbarCommandError on failure.
+        Raises SoundbarAuthError on 401/403.
+        """
         cmd: dict[str, Any] = {
             "component": "main",
             "capability": capability,
@@ -265,17 +307,24 @@ class SmartThingsClient:
         try:
             await self._request("POST", f"/devices/{device_id}/commands", json=body)
             _LOGGER.debug("Command: %s.%s(%s)", capability, command, args)
-            return True
-        except Exception:
-            _LOGGER.error("Command failed: %s.%s", capability, command)
-            return False
+        except SoundbarAuthError:
+            raise
+        except Exception as err:
+            raise SoundbarCommandError(
+                f"Failed to send {capability}.{command}: {err}"
+            ) from err
 
-    async def send_switch_command(self, device_id: str, on: bool) -> bool:
-        return await self.send_standard_command(
+    async def send_switch_command(self, device_id: str, on: bool) -> None:
+        """Send a switch on/off command.
+
+        Raises SoundbarCommandError on failure.
+        Raises SoundbarAuthError on 401/403.
+        """
+        await self.send_standard_command(
             device_id, "switch", "on" if on else "off"
         )
 
-    # ── Device status (cached) ───────────────────────────────────────
+    # -- Device status (cached) -----------------------------------------
 
     async def get_device_status(self, device_id: str) -> dict[str, Any] | None:
         """Fetch full device status with a short TTL cache."""
@@ -292,6 +341,8 @@ class SmartThingsClient:
                     expires_at=now + STATUS_CACHE_TTL,
                 )
             return result
+        except SoundbarAuthError:
+            raise
         except Exception:
             _LOGGER.debug("Failed to get device status for %s", device_id)
             return None
@@ -306,6 +357,8 @@ class SmartThingsClient:
             if result and "data" in result:
                 return result["data"].get("value", {}).get("payload", {})
             return {}
+        except SoundbarAuthError:
+            raise
         except Exception:
             _LOGGER.debug("Failed to get execute status for %s", device_id)
             return None
@@ -325,7 +378,7 @@ class SmartThingsClient:
         except Exception:
             return []
 
-    # ── OCF data fetch with retry ────────────────────────────────────
+    # -- OCF data fetch with retry --------------------------------------
 
     def _get_ocf_lock(self, device_id: str) -> asyncio.Lock:
         """Get or create a per-device lock for OCF reads."""
@@ -365,7 +418,7 @@ class SmartThingsClient:
             return {}
 
 
-# ── Static helpers for initial OAuth token exchange ──────────────────
+# -- Static helpers for initial OAuth token exchange --------------------
 
 
 def build_authorize_url(
