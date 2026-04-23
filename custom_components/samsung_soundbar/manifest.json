@@ -7,6 +7,7 @@
   "integration_type": "device",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/somekindawizard/ha-samsung-soundbar/issues",
-  "requirements": ["aiohttp>=3.9.0"],
+  "loggers": ["custom_components.samsung_soundbar"],
+  "requirements": [],
   "version": "1.0.0"
 }
