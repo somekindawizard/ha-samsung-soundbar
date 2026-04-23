@@ -53,12 +53,79 @@
     "step": {
       "init": {
         "title": "Feature Toggles",
+        "description": "Enable or disable feature groups. Disabling a group stops polling its endpoints, which reduces SmartThings API load.",
         "data": {
           "enable_soundmode": "Sound Mode selector",
-          "enable_advanced_audio": "Advanced Audio switches",
+          "enable_advanced_audio": "Advanced Audio switches (Night Mode, Voice Amplifier, Bass Boost)",
           "enable_woofer": "Woofer level control",
           "enable_eq": "Equalizer preset selector"
         }
+      }
+    }
+  },
+  "services": {
+    "set_speaker_level": {
+      "name": "Set speaker level",
+      "description": "Adjust the volume of an individual speaker channel (center, side, rear, etc.).",
+      "fields": {
+        "speaker_channel": {
+          "name": "Speaker channel",
+          "description": "Which speaker channel to adjust."
+        },
+        "level": {
+          "name": "Level",
+          "description": "Volume offset for the selected channel, from -6 dB to +6 dB."
+        }
+      }
+    },
+    "set_rear_speaker_mode": {
+      "name": "Set rear speaker mode",
+      "description": "Switch rear speakers between front and rear positioning.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Where the rear speakers should be positioned relative to the listener."
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "night_mode": {
+        "name": "Night mode"
+      },
+      "voice_amplifier": {
+        "name": "Voice amplifier"
+      },
+      "bass_boost": {
+        "name": "Bass boost"
+      },
+      "active_voice_amplifier": {
+        "name": "Active voice amplifier"
+      },
+      "space_fit_sound": {
+        "name": "Space fit sound"
+      }
+    },
+    "select": {
+      "sound_mode_select": {
+        "name": "Sound mode"
+      },
+      "eq_preset_select": {
+        "name": "EQ preset"
+      },
+      "input_source_select": {
+        "name": "Input source"
+      }
+    },
+    "number": {
+      "woofer_level": {
+        "name": "Woofer level"
+      }
+    },
+    "sensor": {
+      "volume": {
+        "name": "Volume"
       }
     }
   }
