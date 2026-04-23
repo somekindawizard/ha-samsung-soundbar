@@ -3,23 +3,59 @@
 A Home Assistant custom integration for Samsung soundbars (HW-Q990D, Q990C, Q930D, and others) via the SmartThings API.
 
 Built from scratch, combining the best of:
-- **[homebridge-q990d-soundbar](https://github.com/somekindawizard/homebridge-q990d-soundbar)** — OAuth token management, robust API client, debounced commands
-- **[YASSI](https://github.com/samuelspagl/ha_samsung_soundbar)** — equalizer, per-speaker volume, Space Fit Sound, media info
+- **[homebridge-q990d-soundbar](https://github.com/somekindawizard/homebridge-q990d-soundbar)** -- OAuth token management, robust API client, debounced commands
+- **[YASSI](https://github.com/samuelspagl/ha_samsung_soundbar)** -- equalizer, per-speaker volume, Space Fit Sound, media info
 
 Modernized for current Home Assistant standards (DataUpdateCoordinator, CoordinatorEntity, proper config flow).
 
 ## Features
 
-- **OAuth authentication** — secure SmartThings OAuth2 flow with automatic token refresh (no Personal Access Tokens)
-- **Media player** — power, volume, mute, input source, sound mode, media transport controls
-- **Sound mode** — select from all supported modes (Adaptive, Standard, Surround, Game, etc.) via the media player or a standalone select entity
-- **Advanced audio switches** — Night Mode, Voice Amplifier, Bass Boost, Active Voice Amplifier, Space Fit Sound
-- **Woofer level** — number entity with -6 to +6 dB slider
-- **Equalizer** — EQ preset selector (optional, toggled in integration options)
-- **Input source** — standalone select entity for HDMI/Bluetooth/Wi-Fi input switching
-- **Per-speaker volume** — service call to adjust individual channels (center, side, rear, etc.)
-- **Rear speaker mode** — service call to switch rear speakers between front/rear positioning
-- **Volume sensor** — raw volume level as a sensor for automations
+### Media Player
+- **Power** -- on/off control via SmartThings switch capability
+- **Volume** -- set, step up/down, mute/unmute with optimistic UI updates
+- **Input source** -- HDMI, Bluetooth, Wi-Fi, optical, and more
+- **Sound mode** -- Adaptive, Standard, Surround, Game, etc. (dynamic based on device)
+- **Media transport** -- play, pause, stop with optimistic state updates
+- **Track control** -- next/previous track via `mediaTrackControl` (dynamically shown only if your device supports it)
+- **Media info** -- title, artist, elapsed time, and duration from `audioTrackData`
+- **Progress bar** -- media position tracking in the HA media player card
+
+### Play Media / TTS
+- **TTS announcements** -- send text-to-speech audio to your soundbar from any HA TTS service
+- **Play URL** -- play any audio URL directly on the soundbar
+- **Smart playback modes** -- automatically chooses the right SmartThings `audioNotification` command:
+  - `playTrackAndRestore` for announcements (restores volume after)
+  - `playTrackAndResume` for music (resumes previous track after)
+  - `playTrack` as a generic fallback
+
+### Audio Controls
+- **Advanced audio switches** -- Night Mode, Voice Amplifier, Bass Boost, Active Voice Amplifier, Space Fit Sound
+- **Woofer level** -- number entity with -6 to +6 dB slider
+- **Equalizer** -- EQ preset selector (optional, toggled in integration options)
+- **Per-speaker volume** -- service call to adjust individual channels (center, side, rear, etc.)
+- **Rear speaker mode** -- service call to switch rear speakers between front/rear positioning
+
+### Presets & Calibration
+- **Apply preset** -- set sound mode, EQ, night mode, and woofer level atomically in a single service call
+- **SpaceFit calibration** -- button entity that triggers the soundbar's room calibration process
+
+### Standalone Entities
+- **Sound mode select** -- standalone select entity for dashboards and automations
+- **EQ preset select** -- standalone select entity (optional)
+- **Input source select** -- standalone select entity
+- **Volume sensor** -- raw volume level as a sensor for automations
+
+### Discovery & Automation
+- **Zeroconf discovery** -- HA automatically detects Samsung soundbars on your local network
+- **Device triggers** -- build automations in the HA UI without knowing entity IDs (sound mode changed, playback started/paused/stopped, night mode toggled, input source changed)
+
+### Quality & Reliability
+- **Rate-limit handling** -- automatic retry with exponential backoff and `Retry-After` header support for SmartThings 429 responses
+- **OCF read serialization** -- per-device locking prevents interleaved OCF execute/status reads
+- **Optimistic updates** -- UI updates immediately on commands without waiting for the next poll
+- **Diagnostics** -- downloadable diagnostics with redacted credentials for bug reporting
+- **Translations** -- full English translation coverage for config flow, options, services, and entities
+- **Test suite** -- config flow and coordinator tests for development and CI
 
 ## Installation
 
@@ -40,34 +76,127 @@ Copy the `custom_components/samsung_soundbar` folder to your Home Assistant `cus
 You need a SmartThings OAuth application:
 
 1. Go to the [Samsung Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects)
-2. Create a new project → select **Partner managed OAuth2**
+2. Create a new project, then select **Partner managed OAuth2**
 3. Set the redirect URI to `https://api.smartthings.com/oauth/callback`
 4. Request scopes: `r:devices:*`, `x:devices:*`, `r:locations:*`
 5. Note your **Client ID** and **Client Secret**
 
+Alternatively, you can use a **Personal Access Token** (PAT) from [SmartThings Tokens](https://account.smartthings.com/tokens). PATs expire after 24 hours and do not support automatic refresh.
+
 ### Adding the Integration
 
-1. Go to **Settings → Devices & Services → Add Integration**
+**Automatic discovery:** If your soundbar is on the same network, HA may discover it automatically and prompt you to set it up.
+
+**Manual setup:**
+1. Go to **Settings > Devices & Services > Add Integration**
 2. Search for "Samsung Soundbar"
-3. Enter your Client ID and Client Secret
-4. Open the authorization URL, log in with your Samsung account, authorize
-5. Copy the `code` parameter from the redirect URL and paste it back
-6. Select your soundbar from the discovered devices
-7. Optionally adjust the max volume slider range
+3. Choose OAuth (recommended) or Personal Access Token
+4. For OAuth: enter your Client ID and Client Secret, then follow the authorization flow
+5. Select your soundbar from the discovered devices
+6. Optionally adjust the max volume slider range
 
 ### Feature Toggles
 
 After setup, go to the integration options to enable/disable feature groups:
 - Sound Mode selector
-- Advanced Audio switches
+- Advanced Audio switches (Night Mode, Voice Amplifier, Bass Boost)
 - Woofer level control
 - Equalizer preset selector (off by default)
 
-Disabling a feature group skips its OCF endpoint polling, reducing API load.
+Disabling a feature group skips its OCF endpoint polling, reducing API load. Changes take effect immediately (no restart required).
+
+## Services
+
+### `samsung_soundbar.apply_preset`
+
+Set multiple audio settings atomically in a single call. Only provided fields are changed.
+
+```yaml
+# Movie night preset
+service: samsung_soundbar.apply_preset
+data:
+  sound_mode: surround
+  night_mode: true
+  woofer_level: 3
+
+# Music preset
+service: samsung_soundbar.apply_preset
+data:
+  sound_mode: "adaptive sound"
+  eq_preset: Music
+  night_mode: false
+  woofer_level: 0
+```
+
+### `samsung_soundbar.set_speaker_level`
+
+Adjust individual speaker channel volume.
+
+```yaml
+service: samsung_soundbar.set_speaker_level
+data:
+  speaker_channel: Spk_Center  # Spk_Center, Spk_Side, Spk_Wide, Spk_Front_Top, Spk_Rear, Spk_Rear_Top
+  level: 3  # -6 to +6 dB
+```
+
+### `samsung_soundbar.set_rear_speaker_mode`
+
+Switch rear speakers between front and rear positioning.
+
+```yaml
+service: samsung_soundbar.set_rear_speaker_mode
+data:
+  mode: Rear  # Front or Rear
+```
+
+### Play Media / TTS
+
+```yaml
+# TTS announcement (doorbell, alarm, etc.)
+service: tts.speak
+target:
+  entity_id: media_player.soundbar
+data:
+  message: "Someone is at the front door"
+
+# Play a URL
+service: media_player.play_media
+target:
+  entity_id: media_player.soundbar
+data:
+  media_content_type: music
+  media_content_id: "https://example.com/doorbell.mp3"
+
+# Announcement with custom volume
+service: media_player.play_media
+target:
+  entity_id: media_player.soundbar
+data:
+  media_content_type: music
+  media_content_id: "https://example.com/alert.mp3"
+  announce: true
+  extra:
+    volume: 50
+```
 
 ## How It Works
 
-This integration talks directly to the SmartThings REST API using the same undocumented OCF `execute` capability endpoints that the SmartThings app uses. No dependency on `pysmartthings`.
+This integration talks directly to the SmartThings REST API using both standard capabilities and undocumented OCF `execute` capability endpoints. No dependency on `pysmartthings`.
+
+### Standard SmartThings Capabilities
+
+| Feature | Capability | Commands |
+| --- | --- | --- |
+| Power | `switch` | `on`, `off` |
+| Volume | `audioVolume` | `setVolume`, `volumeUp`, `volumeDown` |
+| Mute | `audioMute` | `mute`, `unmute` |
+| Input Source | `samsungvd.audioInputSource` | `setInputSource` |
+| Media Playback | `mediaPlayback` | `play`, `pause`, `stop` |
+| Track Control | `mediaTrackControl` | `nextTrack`, `previousTrack` |
+| TTS / Play Media | `audioNotification` | `playTrack`, `playTrackAndRestore`, `playTrackAndResume` |
+| Media Info | `audioTrackData` | (read-only) title, artist, elapsed, total |
+
+### Samsung OCF Endpoints (via `execute` capability)
 
 | Feature | OCF Endpoint | Property |
 | --- | --- | --- |
@@ -81,9 +210,42 @@ This integration talks directly to the SmartThings REST API using the same undoc
 | Rear Speaker | `/sec/networkaudio/surroundspeaker` | `x.com.samsung.networkaudio.currentRearPosition` |
 | Active Voice Amp | `/sec/networkaudio/activeVoiceAmplifier` | `x.com.samsung.networkaudio.activeVoiceAmplifier` |
 | Space Fit Sound | `/sec/networkaudio/spacefitSound` | `x.com.samsung.networkaudio.spacefitSound` |
-| Power | Standard `switch` capability | — |
-| Volume | Standard `audioVolume` capability | — |
-| Input Source | Standard `mediaInputSource` capability | — |
+
+### Polling Strategy
+
+OCF endpoints are polled one at a time on a rotating basis to avoid SmartThings rate limiting. A full OCF refresh takes approximately 2 minutes (with a 30-second poll interval and 3-4 enabled OCF targets). Standard capabilities are fetched every poll cycle.
+
+State from un-polled OCF endpoints is preserved between cycles using `dataclasses.replace()`, which avoids the common bug where falsy values (Night Mode off, woofer at 0) get incorrectly overwritten.
+
+## Entities
+
+| Entity | Platform | Description |
+| --- | --- | --- |
+| Media Player | `media_player` | Main soundbar entity with all controls |
+| Night Mode | `switch` | Toggle night mode |
+| Voice Amplifier | `switch` | Toggle voice amplifier |
+| Bass Boost | `switch` | Toggle bass boost |
+| Active Voice Amplifier | `switch` | Toggle active voice amplifier |
+| Space Fit Sound | `switch` | Toggle Space Fit Sound feature |
+| SpaceFit Calibration | `button` | Trigger room calibration |
+| Sound Mode | `select` | Standalone sound mode selector |
+| EQ Preset | `select` | Standalone EQ preset selector (optional) |
+| Input Source | `select` | Standalone input source selector |
+| Woofer Level | `number` | Subwoofer level slider (-6 to +6 dB) |
+| Volume | `sensor` | Raw volume level for automations |
+
+## Diagnostics
+
+Download diagnostic data from **Settings > Devices & Services > Samsung Soundbar > ... > Download Diagnostics**. All OAuth tokens and credentials are automatically redacted. Include this file when reporting issues.
+
+## Supported Devices
+
+Tested on:
+- Samsung HW-Q990D
+- Samsung HW-Q990C
+- Samsung HW-Q930D
+
+Should work with any Samsung soundbar that appears in the SmartThings app and exposes the `execute` capability for OCF endpoints. If your model doesn't work, open an issue with your diagnostics file.
 
 ## Credits
 
