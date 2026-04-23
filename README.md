@@ -71,9 +71,17 @@ Copy the `custom_components/samsung_soundbar` folder to your Home Assistant `cus
 
 ## Setup
 
-### Prerequisites
+### Authentication Options
 
-You need a SmartThings OAuth application:
+This integration supports three ways to authenticate with SmartThings:
+
+| Method | Token Lifetime | Auto-refresh | Best for |
+| --- | --- | --- | --- |
+| OAuth via Developer Workspace | 24h (refreshable) | Yes | Most users |
+| OAuth via SmartThings CLI | 24h (refreshable) | Yes | Technical users, faster setup |
+| Personal Access Token (PAT) | 24h | No | Quick testing |
+
+### Option 1: OAuth via Developer Workspace
 
 1. Go to the [Samsung Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects)
 2. Create a new project, then select **Partner managed OAuth2**
@@ -81,7 +89,48 @@ You need a SmartThings OAuth application:
 4. Request scopes: `r:devices:*`, `x:devices:*`, `r:locations:*`
 5. Note your **Client ID** and **Client Secret**
 
-Alternatively, you can use a **Personal Access Token** (PAT) from [SmartThings Tokens](https://account.smartthings.com/tokens). PATs expire after 24 hours and do not support automatic refresh.
+### Option 2: OAuth via SmartThings CLI (faster)
+
+If you have Node.js installed, the SmartThings CLI can create an OAuth app in one command:
+
+```bash
+# Install the CLI
+npm install -g @smartthings/cli
+
+# Log in to your Samsung account
+smartthings login
+
+# Create an OAuth app with the required scopes
+smartthings apps:oauth:generate \
+  --client-name "HA Soundbar" \
+  --scope "r:devices:* x:devices:* r:locations:*" \
+  --redirect-uri "https://api.smartthings.com/oauth/callback"
+```
+
+This prints your **Client ID** and **Client Secret** directly in the terminal. No web UI needed.
+
+You can also use the CLI to verify your soundbar is visible:
+
+```bash
+# List all devices on your account
+smartthings devices
+
+# Get detailed status of a specific device
+smartthings devices:status <device-id>
+
+# See what capabilities your soundbar exposes
+smartthings devices:capabilities <device-id>
+```
+
+This is useful for debugging if the integration can't find your soundbar or if certain features don't work on your model.
+
+### Option 3: Personal Access Token (quick testing)
+
+Generate a token at [SmartThings Tokens](https://account.smartthings.com/tokens) with the following scopes enabled:
+- **Devices**: List all devices, See all devices, Control all devices
+- **Locations**: See all locations
+
+PATs expire after 24 hours and cannot be automatically refreshed. Use OAuth for permanent setups.
 
 ### Adding the Integration
 
@@ -233,6 +282,32 @@ State from un-polled OCF endpoints is preserved between cycles using `dataclasse
 | Input Source | `select` | Standalone input source selector |
 | Woofer Level | `number` | Subwoofer level slider (-6 to +6 dB) |
 | Volume | `sensor` | Raw volume level for automations |
+
+## Troubleshooting
+
+### Can't find my soundbar during setup
+
+Use the SmartThings CLI to verify your device is visible:
+
+```bash
+smartthings devices
+```
+
+If your soundbar doesn't appear, make sure it's set up in the SmartThings mobile app first.
+
+### Features missing or not working
+
+Some OCF endpoints may not be available on all soundbar models. Download diagnostics and check the `state` section to see which fields are populated. You can also inspect your device's capabilities:
+
+```bash
+smartthings devices:capabilities <device-id>
+```
+
+If `execute` is not listed as a capability, the OCF-based features (sound mode, night mode, woofer, EQ) will not work on your model.
+
+### Rate limiting (429 errors)
+
+The integration automatically retries with backoff. If you see frequent 429 errors in the logs, try disabling feature groups you don't use in the integration options to reduce API calls.
 
 ## Diagnostics
 
