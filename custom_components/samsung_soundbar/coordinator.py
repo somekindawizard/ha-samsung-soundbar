@@ -8,7 +8,7 @@ update() calls.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from typing import Any
 
@@ -60,7 +60,7 @@ class SoundbarState:
 
     # Sound mode
     sound_mode: str = ""
-    supported_sound_modes: list[str] = field(default_factory=lambda: ["adaptive sound", "standard", "surround", "game"])
+    supported_sound_modes: list[str] = field(default_factory=list)
 
     # Advanced audio
     night_mode: bool = False
@@ -116,7 +116,16 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
         self._ocf_index = 0
 
     async def _async_update_data(self) -> SoundbarState:
-        """Fetch all device data in one coordinator cycle."""
+        """Fetch all device data in one coordinator cycle.
+
+        OCF endpoints are polled one-at-a-time on a rotating basis to
+        avoid SmartThings 429 rate limiting.  To avoid losing state for
+        endpoints that were NOT polled this cycle, we start from a copy
+        of the previous state and only overwrite the fields that were
+        actually fetched.  This eliminates the old falsy-check carry-
+        forward logic which could not distinguish "the device reported
+        False/0" from "we didn't poll that endpoint."
+        """
         try:
             # Ensure token is fresh before any API calls
             await self.client.ensure_token()
@@ -128,10 +137,12 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
             if not status:
                 raise UpdateFailed("Could not reach SmartThings API")
 
-            state = SoundbarState()
+            # Start from previous state so un-polled OCF fields are
+            # preserved automatically.  On first poll we start fresh.
+            state = replace(self.data) if self.data else SoundbarState()
             main = status.get("components", {}).get("main", {})
 
-            # ── Standard capabilities ────────────────────────────
+            # ── Standard capabilities (always fetched) ────────────
             # Power
             switch_val = _nested(main, "switch", "switch", "value")
             state.power = switch_val == "on" if switch_val else False
@@ -161,17 +172,15 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
             #
             # The OCF spec defines these short identifiers on the `ocf`
             # capability:
-            #   mnmn → manufacturer name
-            #   mnmo → model number
-            #   mnfv → manufacturer's firmware version
-            #   mnpv → platform version
+            #   mnmn -> manufacturer name
+            #   mnmo -> model number
+            #   mnfv -> manufacturer's firmware version
+            #   mnpv -> platform version
             #
             # SmartThings also surfaces the long-form properties
             # `manufacturerName`, `modelNumber`, and `firmwareVersion`.
             # Prefer the long-form properties when available and fall
-            # back to the OCF short codes. Do NOT use `mnfv` as a
-            # fallback for the manufacturer — that is the firmware
-            # version field.
+            # back to the OCF short codes.
             if self._first_poll:
                 manufacturer = (
                     _nested(main, "ocf", "manufacturerName", "value")
@@ -192,18 +201,16 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
                 state.model = model
                 state.firmware_version = firmware
                 self._first_poll = False
-            else:
-                # Carry forward from previous data
-                prev = self.data
-                if prev:
-                    state.manufacturer = prev.manufacturer
-                    state.model = prev.model
-                    state.firmware_version = prev.firmware_version
 
             # ── OCF custom capabilities ──────────────────────────
             # Rotate through one OCF endpoint per poll cycle to avoid
             # SmartThings 429 rate limiting. Each cycle fetches at most
             # one OCF endpoint, so a full refresh takes ~2 minutes.
+            #
+            # Because we started from replace(prev), fields for
+            # endpoints NOT polled this cycle retain their previous
+            # values automatically.  No falsy-check carry-forward
+            # needed.
             ocf_targets = []
             if self.options.get(OPT_ENABLE_SOUNDMODE, True):
                 ocf_targets.append("soundmode")
@@ -262,29 +269,6 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
                             state.eq_bands = eq_data.get(PROP_EQ_BANDS, [])
                 except Exception:
                     _LOGGER.debug("OCF poll for %s failed, will retry next cycle", target)
-
-            # Carry forward OCF state from previous poll for endpoints
-            # not fetched this cycle
-            prev = self.data
-            if prev:
-                if not state.sound_mode and prev.sound_mode:
-                    state.sound_mode = prev.sound_mode
-                if not state.supported_sound_modes and prev.supported_sound_modes:
-                    state.supported_sound_modes = prev.supported_sound_modes
-                if state.woofer_level == 0 and prev.woofer_level != 0:
-                    state.woofer_level = prev.woofer_level
-                if not state.night_mode and prev.night_mode:
-                    state.night_mode = prev.night_mode
-                if not state.voice_amplifier and prev.voice_amplifier:
-                    state.voice_amplifier = prev.voice_amplifier
-                if not state.bass_boost and prev.bass_boost:
-                    state.bass_boost = prev.bass_boost
-                if not state.woofer_connection and prev.woofer_connection:
-                    state.woofer_connection = prev.woofer_connection
-                if not state.eq_preset and prev.eq_preset:
-                    state.eq_preset = prev.eq_preset
-                if not state.supported_eq_presets and prev.supported_eq_presets:
-                    state.supported_eq_presets = prev.supported_eq_presets
 
             return state
 
