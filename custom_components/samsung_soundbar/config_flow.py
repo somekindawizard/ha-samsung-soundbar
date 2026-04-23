@@ -5,6 +5,7 @@ from typing import Any
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.zeroconf import ZeroconfServiceInfo
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import (
@@ -43,6 +44,65 @@ class SamsungSoundbarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._token_data = None
         self._devices = []
         self._auth_method = ""
+        self._discovered_name: str | None = None
+        self._discovered_model: str | None = None
+
+    # ── Zeroconf discovery ──────────────────────────────────────────
+
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> config_entries.ConfigFlowResult:
+        """Handle zeroconf discovery of a Samsung soundbar on the LAN.
+
+        We can discover the device exists, but still need SmartThings
+        credentials to control it. This step presents a confirmation
+        and then routes to the normal OAuth/PAT auth flow.
+        """
+        # Extract device info from zeroconf properties
+        name = discovery_info.name.split("._")[0] if discovery_info.name else "Samsung Soundbar"
+        properties = discovery_info.properties or {}
+        model = properties.get("model", properties.get("md", ""))
+        manufacturer = properties.get("manufacturer", properties.get("mf", ""))
+
+        # Use the host/mac as a preliminary unique ID to avoid duplicate
+        # discovery prompts. The final unique_id is set to the
+        # SmartThings device_id during the device selection step.
+        unique_id = discovery_info.host or name
+        await self.async_set_unique_id(unique_id)
+        self._abort_if_unique_id_configured()
+
+        self._discovered_name = name
+        self._discovered_model = model
+
+        self.context["title_placeholders"] = {
+            "name": name,
+            "model": model,
+        }
+
+        _LOGGER.info(
+            "Discovered Samsung soundbar via zeroconf: %s (%s) at %s",
+            name, model, discovery_info.host,
+        )
+
+        return await self.async_step_zeroconf_confirm()
+
+    async def async_step_zeroconf_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Confirm the user wants to set up the discovered soundbar."""
+        if user_input is not None:
+            # User confirmed, route to auth method selection
+            return await self.async_step_user()
+
+        return self.async_show_form(
+            step_id="zeroconf_confirm",
+            description_placeholders={
+                "name": self._discovered_name or "Samsung Soundbar",
+                "model": self._discovered_model or "Unknown",
+            },
+        )
+
+    # ── Manual setup ────────────────────────────────────────────────
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
