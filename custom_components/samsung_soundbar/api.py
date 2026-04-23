@@ -1,13 +1,14 @@
 """SmartThings REST API client with self-managed OAuth tokens.
 
 Ported from the homebridge-q990d-soundbar SmartThingsClient / TokenManager.
-Talks directly to the SmartThings v1 API — no pysmartthings dependency.
+Talks directly to the SmartThings v1 API -- no pysmartthings dependency.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 from base64 import b64encode
 from dataclasses import dataclass, field
@@ -25,6 +26,12 @@ _LOGGER = logging.getLogger(__name__)
 
 # How long a cached status response is considered fresh (seconds).
 STATUS_CACHE_TTL = 2.0
+
+# Rate-limit retry configuration
+MAX_RETRIES = 3
+BACKOFF_BASE = 1.0  # seconds
+BACKOFF_MAX = 30.0  # seconds
+JITTER_MAX = 0.5  # seconds
 
 
 @dataclass
@@ -60,7 +67,12 @@ class SmartThingsClient:
         # Coalesce concurrent token refreshes
         self._refresh_lock = asyncio.Lock()
 
-        # Status cache (device_id → cached response)
+        # Serialize OCF execute+status reads per device to avoid
+        # interleaved payloads (the execute status endpoint returns the
+        # last response device-wide).
+        self._ocf_locks: dict[str, asyncio.Lock] = {}
+
+        # Status cache (device_id -> cached response)
         self._status_cache: dict[str, _CacheEntry] = {}
 
     # ── Token helpers ────────────────────────────────────────────────
@@ -112,6 +124,9 @@ class SmartThingsClient:
                 body = await resp.json()
 
             expires_in = body.get("expires_in", 86400)
+            _LOGGER.debug(
+                "Token refreshed, expires_in=%s seconds", expires_in
+            )
             self._tokens = TokenData(
                 access_token=body["access_token"],
                 refresh_token=body.get(
@@ -146,22 +161,63 @@ class SmartThingsClient:
         path: str,
         json: dict | None = None,
     ) -> dict[str, Any] | None:
+        """Make an API request with automatic retry on 429 rate limits.
+
+        Respects the Retry-After header when present. Falls back to
+        exponential backoff with jitter.
+        """
         await self.ensure_token()
         url = f"{ST_API_BASE}{path}"
-        try:
-            async with self._session.request(
-                method, url, json=json, headers=self._headers()
-            ) as resp:
-                resp.raise_for_status()
-                if resp.content_type and "json" in resp.content_type:
-                    return await resp.json()
-                return None
-        except aiohttp.ClientResponseError as err:
-            _LOGGER.error("SmartThings API %s %s → %s", method, path, err.status)
-            raise
-        except Exception:
-            _LOGGER.exception("SmartThings API request failed: %s %s", method, path)
-            raise
+
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                async with self._session.request(
+                    method, url, json=json, headers=self._headers()
+                ) as resp:
+                    if resp.status == 429:
+                        retry_after = resp.headers.get("Retry-After")
+                        if retry_after:
+                            try:
+                                delay = float(retry_after)
+                            except ValueError:
+                                delay = BACKOFF_BASE * (2 ** attempt)
+                        else:
+                            delay = BACKOFF_BASE * (2 ** attempt)
+                        delay = min(delay, BACKOFF_MAX)
+                        jitter = random.uniform(0, JITTER_MAX)
+                        total_delay = delay + jitter
+                        _LOGGER.debug(
+                            "SmartThings 429 on %s %s, retry %d/%d in %.1fs",
+                            method, path, attempt + 1, MAX_RETRIES, total_delay,
+                        )
+                        if attempt < MAX_RETRIES:
+                            await asyncio.sleep(total_delay)
+                            continue
+                        # Final attempt exhausted, raise
+                        resp.raise_for_status()
+
+                    resp.raise_for_status()
+                    if resp.content_type and "json" in resp.content_type:
+                        return await resp.json()
+                    return None
+            except aiohttp.ClientResponseError as err:
+                last_error = err
+                if err.status != 429 or attempt >= MAX_RETRIES:
+                    _LOGGER.error(
+                        "SmartThings API %s %s -> %s", method, path, err.status
+                    )
+                    raise
+            except Exception:
+                _LOGGER.exception(
+                    "SmartThings API request failed: %s %s", method, path
+                )
+                raise
+
+        # Should not reach here, but just in case
+        if last_error:
+            raise last_error
+        return None
 
     # ── Device commands ──────────────────────────────────────────────
 
@@ -271,6 +327,12 @@ class SmartThingsClient:
 
     # ── OCF data fetch with retry ────────────────────────────────────
 
+    def _get_ocf_lock(self, device_id: str) -> asyncio.Lock:
+        """Get or create a per-device lock for OCF reads."""
+        if device_id not in self._ocf_locks:
+            self._ocf_locks[device_id] = asyncio.Lock()
+        return self._ocf_locks[device_id]
+
     async def fetch_ocf_data(
         self,
         device_id: str,
@@ -280,26 +342,27 @@ class SmartThingsClient:
     ) -> dict[str, Any]:
         """Request an OCF endpoint and poll execute status until the data appears.
 
-        This replaces YASSI's awful sleep-and-retry loops with bounded retries
-        and shorter initial waits.
+        Serialized per-device with a lock to prevent interleaved execute
+        commands from clobbering each other's status response.
         """
-        await self.send_execute_command(device_id, href, {})
-        await asyncio.sleep(0.3)
+        async with self._get_ocf_lock(device_id):
+            await self.send_execute_command(device_id, href, {})
+            await asyncio.sleep(0.3)
 
-        for attempt in range(max_retries):
-            payload = await self.get_execute_status(device_id)
-            if payload and expected_key in payload:
-                return payload
-            delay = 0.5 * (attempt + 1)  # 0.5, 1.0, 1.5, 2.0, 2.5
-            await asyncio.sleep(delay)
+            for attempt in range(max_retries):
+                payload = await self.get_execute_status(device_id)
+                if payload and expected_key in payload:
+                    return payload
+                delay = 0.5 * (attempt + 1)  # 0.5, 1.0, 1.5, 2.0, 2.5
+                await asyncio.sleep(delay)
 
-        _LOGGER.warning(
-            "OCF data for %s not available after %d retries (key: %s)",
-            href,
-            max_retries,
-            expected_key,
-        )
-        return {}
+            _LOGGER.warning(
+                "OCF data for %s not available after %d retries (key: %s)",
+                href,
+                max_retries,
+                expected_key,
+            )
+            return {}
 
 
 # ── Static helpers for initial OAuth token exchange ──────────────────
@@ -347,8 +410,11 @@ async def exchange_code_for_tokens(
         resp.raise_for_status()
         body = await resp.json()
 
+    expires_in = body.get("expires_in", 86400)
+    _LOGGER.debug("Initial token exchange, expires_in=%s seconds", expires_in)
+
     return TokenData(
         access_token=body["access_token"],
         refresh_token=body["refresh_token"],
-        expires_at=time.time() + body.get("expires_in", 86400),
+        expires_at=time.time() + expires_in,
     )
