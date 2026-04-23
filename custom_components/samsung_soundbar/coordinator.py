@@ -158,20 +158,39 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
                 state.media_artist = track_data.get("artist", "")
 
             # Device info (first poll only)
+            #
+            # The OCF spec defines these short identifiers on the `ocf`
+            # capability:
+            #   mnmn → manufacturer name
+            #   mnmo → model number
+            #   mnfv → manufacturer's firmware version
+            #   mnpv → platform version
+            #
+            # SmartThings also surfaces the long-form properties
+            # `manufacturerName`, `modelNumber`, and `firmwareVersion`.
+            # Prefer the long-form properties when available and fall
+            # back to the OCF short codes. Do NOT use `mnfv` as a
+            # fallback for the manufacturer — that is the firmware
+            # version field.
             if self._first_poll:
-                state.manufacturer = _nested(main, "ocf", "mnfv", "value") or "Samsung"
-                state.model = _nested(main, "ocf", "mnmo", "value") or ""
-                state.firmware_version = _nested(main, "ocf", "mnfv", "value") or ""
-                # Try the proper fields
-                mfr = _nested(main, "ocf", "manufacturerName", "value")
-                if mfr:
-                    state.manufacturer = mfr
-                mdl = _nested(main, "ocf", "modelNumber", "value")
-                if mdl:
-                    state.model = mdl
-                fw = _nested(main, "ocf", "firmwareVersion", "value")
-                if fw:
-                    state.firmware_version = fw
+                manufacturer = (
+                    _nested(main, "ocf", "manufacturerName", "value")
+                    or _nested(main, "ocf", "mnmn", "value")
+                    or "Samsung"
+                )
+                model = (
+                    _nested(main, "ocf", "modelNumber", "value")
+                    or _nested(main, "ocf", "mnmo", "value")
+                    or ""
+                )
+                firmware = (
+                    _nested(main, "ocf", "firmwareVersion", "value")
+                    or _nested(main, "ocf", "mnfv", "value")
+                    or ""
+                )
+                state.manufacturer = manufacturer
+                state.model = model
+                state.firmware_version = firmware
                 self._first_poll = False
             else:
                 # Carry forward from previous data
