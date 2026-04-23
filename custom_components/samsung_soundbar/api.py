@@ -82,11 +82,11 @@ class SmartThingsClient:
 
     async def ensure_token(self) -> None:
         """Refresh the access token if it is near expiry."""
-        if not self.token_needs_refresh():
+        if not self._tokens.refresh_token or not self.token_needs_refresh():
             return
         async with self._refresh_lock:
             # Double-check after acquiring the lock
-            if not self.token_needs_refresh():
+            if not self._tokens.refresh_token or not self.token_needs_refresh():
                 return
             await self._refresh_tokens()
 
@@ -153,7 +153,7 @@ class SmartThingsClient:
                 method, url, json=json, headers=self._headers()
             ) as resp:
                 resp.raise_for_status()
-                if resp.content_length and resp.content_length > 0:
+                if resp.content_type and "json" in resp.content_type:
                     return await resp.json()
                 return None
         except aiohttp.ClientResponseError as err:

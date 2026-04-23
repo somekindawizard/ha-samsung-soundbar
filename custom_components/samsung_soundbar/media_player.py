@@ -163,7 +163,7 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
 
     async def async_select_source(self, source: str) -> None:
         await self.coordinator.client.send_standard_command(
-            self._device_id, "mediaInputSource", "setInputSource", [source]
+            self._device_id, "samsungvd.audioInputSource", "setInputSource", [source]
         )
         await self.coordinator.async_request_refresh()
 
@@ -181,7 +181,9 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
         await self.coordinator.client.send_execute_command(
             self._device_id, HREF_SOUNDMODE, {PROP_SOUNDMODE: sound_mode}
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data:
+            self.coordinator.data.sound_mode = sound_mode
+            self.async_write_ha_state()
 
     # ── Media info ───────────────────────────────────────────────────
 

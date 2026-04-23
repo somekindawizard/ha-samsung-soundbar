@@ -105,7 +105,9 @@ class SoundModeSelect(_SoundbarSelect):
         await self.coordinator.client.send_execute_command(
             self._device_id, HREF_SOUNDMODE, {PROP_SOUNDMODE: option}
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data:
+            self.coordinator.data.sound_mode = option
+            self.async_write_ha_state()
 
 
 class EqPresetSelect(_SoundbarSelect):
@@ -153,6 +155,6 @@ class InputSourceSelect(_SoundbarSelect):
 
     async def async_select_option(self, option: str) -> None:
         await self.coordinator.client.send_standard_command(
-            self._device_id, "mediaInputSource", "setInputSource", [option]
+            self._device_id, "samsungvd.audioInputSource", "setInputSource", [option]
         )
         await self.coordinator.async_request_refresh()
