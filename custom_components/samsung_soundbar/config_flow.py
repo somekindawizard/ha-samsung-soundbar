@@ -1,7 +1,7 @@
 """Config flow for Samsung Soundbar integration."""
 from __future__ import annotations
 import logging
-from typing import Any
+from typing import Any, Mapping
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
@@ -249,6 +249,124 @@ class SamsungSoundbarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_MAX_VOLUME, default=100): vol.All(
                     int, vol.Range(min=1, max=100)
                 ),
+            }),
+            errors=errors,
+        )
+
+    # ── Reauth flow ─────────────────────────────────────────────────
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reauth triggered by expired or invalid credentials.
+
+        Routes to OAuth or PAT reauth based on the existing config.
+        """
+        reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        if reauth_entry and reauth_entry.data.get(CONF_CLIENT_ID):
+            # OAuth user: re-authorize with existing client credentials
+            self._client_id = reauth_entry.data[CONF_CLIENT_ID]
+            self._client_secret = reauth_entry.data[CONF_CLIENT_SECRET]
+            return await self.async_step_reauth_authorize()
+        # PAT user: collect a new personal access token
+        return await self.async_step_reauth_pat()
+
+    async def async_step_reauth_authorize(self, user_input=None):
+        """Re-authenticate via OAuth: collect a new authorization code."""
+        errors = {}
+        if user_input is not None:
+            code = user_input["auth_code"].strip()
+            session = async_get_clientsession(self.hass)
+            try:
+                token_data = await exchange_code_for_tokens(
+                    session=session,
+                    client_id=self._client_id,
+                    client_secret=self._client_secret,
+                    code=code,
+                    redirect_uri=REDIRECT_URI,
+                )
+            except aiohttp.ClientResponseError:
+                _LOGGER.error("Reauth token exchange failed")
+                errors["base"] = "invalid_auth_code"
+            except Exception:
+                _LOGGER.exception("Reauth token exchange failed")
+                errors["base"] = "unknown"
+            else:
+                reauth_entry = self.hass.config_entries.async_get_entry(
+                    self.context["entry_id"]
+                )
+                new_data = {
+                    **reauth_entry.data,
+                    CONF_ACCESS_TOKEN: token_data.access_token,
+                    CONF_REFRESH_TOKEN: token_data.refresh_token,
+                    CONF_TOKEN_EXPIRES_AT: token_data.expires_at,
+                }
+                self.hass.config_entries.async_update_entry(
+                    reauth_entry, data=new_data
+                )
+                await self.hass.config_entries.async_reload(reauth_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        auth_url = build_authorize_url(
+            client_id=self._client_id,
+            redirect_uri=REDIRECT_URI,
+            scopes=SCOPES,
+        )
+        return self.async_show_form(
+            step_id="reauth_authorize",
+            data_schema=vol.Schema({
+                vol.Required("auth_code"): str,
+            }),
+            description_placeholders={"auth_url": auth_url},
+            errors=errors,
+        )
+
+    async def async_step_reauth_pat(self, user_input=None):
+        """Re-authenticate via Personal Access Token."""
+        errors = {}
+        if user_input is not None:
+            pat = user_input["personal_access_token"].strip()
+            session = async_get_clientsession(self.hass)
+            client = SmartThingsClient(
+                session=session,
+                client_id="",
+                client_secret="",
+                token_data=TokenData(
+                    access_token=pat, refresh_token="", expires_at=0
+                ),
+            )
+            try:
+                devices = await client.list_devices()
+            except Exception:
+                _LOGGER.exception("Reauth PAT validation failed")
+                errors["base"] = "invalid_auth"
+            else:
+                if not devices:
+                    errors["base"] = "invalid_auth"
+                else:
+                    reauth_entry = self.hass.config_entries.async_get_entry(
+                        self.context["entry_id"]
+                    )
+                    new_data = {
+                        **reauth_entry.data,
+                        CONF_ACCESS_TOKEN: pat,
+                        CONF_REFRESH_TOKEN: "",
+                        CONF_TOKEN_EXPIRES_AT: 0,
+                    }
+                    self.hass.config_entries.async_update_entry(
+                        reauth_entry, data=new_data
+                    )
+                    await self.hass.config_entries.async_reload(
+                        reauth_entry.entry_id
+                    )
+                    return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth_pat",
+            data_schema=vol.Schema({
+                vol.Required("personal_access_token"): str,
             }),
             errors=errors,
         )

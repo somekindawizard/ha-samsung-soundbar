@@ -14,9 +14,10 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import SmartThingsClient
+from .api import SmartThingsClient, SoundbarAuthError
 from .const import (
     DEFAULT_POLL_INTERVAL,
     HREF_ADVANCED_AUDIO,
@@ -131,6 +132,9 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
         endpoints that were NOT polled this cycle, we start from a copy
         of the previous state and only overwrite the fields that were
         actually fetched.
+
+        Raises ConfigEntryAuthFailed on authentication errors so HA
+        triggers the reauth flow automatically.
         """
         try:
             # Ensure token is fresh before any API calls
@@ -282,11 +286,18 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
                             state.supported_eq_presets = eq_data.get(PROP_EQ_SUPPORTED, [])
                             state.eq_action = eq_data.get(PROP_EQ_ACTION, "")
                             state.eq_bands = eq_data.get(PROP_EQ_BANDS, [])
+                except SoundbarAuthError:
+                    # Auth errors must propagate to trigger reauth
+                    raise
                 except Exception:
                     _LOGGER.debug("OCF poll for %s failed, will retry next cycle", target)
 
             return state
 
+        except SoundbarAuthError as err:
+            raise ConfigEntryAuthFailed(
+                "SmartThings authentication failed. Please re-authenticate."
+            ) from err
         except UpdateFailed:
             raise
         except Exception as err:
