@@ -243,6 +243,8 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
             self.coordinator.async_set_updated_data(
                 replace(self.coordinator.data, sound_mode=sound_mode)
             )
+        # OCF write: schedule refresh to confirm the command took effect
+        await self.coordinator.async_request_refresh()
 
     # -- Media info ---------------------------------------------------
 
