@@ -50,12 +50,12 @@ Modernized for current Home Assistant standards (DataUpdateCoordinator, Coordina
 - **Device triggers** -- build automations in the HA UI without knowing entity IDs (sound mode changed, playback started/paused/stopped, night mode toggled, input source changed)
 
 ### Quality & Reliability
+- **Automatic re-authentication** -- when tokens expire, HA prompts you to re-authenticate instead of silently failing (see [Re-authentication](#re-authentication) below)
+- **Error feedback** -- failed commands show a notification in the HA UI instead of silently doing nothing
+- **Post-write refresh** -- OCF commands (sound mode, EQ, woofer) trigger an immediate state refresh to confirm the change took effect
 - **Rate-limit handling** -- automatic retry with exponential backoff and `Retry-After` header support for SmartThings 429 responses
 - **OCF read serialization** -- per-device locking prevents interleaved OCF execute/status reads
 - **Optimistic updates** -- UI updates immediately on commands without waiting for the next poll
-- **Diagnostics** -- downloadable diagnostics with redacted credentials for bug reporting
-- **Translations** -- full English translation coverage for config flow, options, services, and entities
-- **Test suite** -- config flow and coordinator tests for development and CI
 
 ## Installation
 
@@ -73,15 +73,16 @@ Copy the `custom_components/samsung_soundbar` folder to your Home Assistant `cus
 
 ### Authentication Options
 
-This integration supports three ways to authenticate with SmartThings:
+This integration supports two ways to authenticate with SmartThings:
 
-| Method | Token Lifetime | Auto-refresh | Best for |
-| --- | --- | --- | --- |
-| OAuth via Developer Workspace | 24h (refreshable) | Yes | Most users |
-| OAuth via SmartThings CLI | 24h (refreshable) | Yes | Technical users, faster setup |
-| Personal Access Token (PAT) | 24h | No | Quick testing |
+| Method | Token Lifetime | Auto-refresh | Re-auth on expiry | Best for |
+| --- | --- | --- | --- | --- |
+| **OAuth** (recommended) | 24h (refreshable) | Yes | Yes, prompts for new auth code | Permanent setups |
+| **Personal Access Token** | 24h (not refreshable) | No | Yes, prompts for new token | Quick testing, OAuth fallback |
 
-### Option 1: OAuth via Developer Workspace
+> **Why keep PAT?** OAuth setup requires creating a Samsung Developer Workspace project, which can be finicky. PAT lets you get up and running in 30 seconds to verify the integration works with your soundbar model before committing to OAuth. When the PAT expires after 24h, HA will prompt you to enter a new one (or you can reconfigure with OAuth at that point).
+
+### Option 1: OAuth via Developer Workspace (recommended)
 
 1. Go to the [Samsung Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects)
 2. Create a new project, then select **Partner managed OAuth2**
@@ -130,7 +131,7 @@ Generate a token at [SmartThings Tokens](https://account.smartthings.com/tokens)
 - **Devices**: List all devices, See all devices, Control all devices
 - **Locations**: See all locations
 
-PATs expire after 24 hours and cannot be automatically refreshed. Use OAuth for permanent setups.
+> **Note:** PATs expire after 24 hours and cannot be automatically refreshed. When your PAT expires, HA will show a notification prompting you to enter a new one. This is fine for testing, but use OAuth for a permanent setup.
 
 ### Adding the Integration
 
@@ -153,6 +154,31 @@ After setup, go to the integration options to enable/disable feature groups:
 - Equalizer preset selector (off by default)
 
 Disabling a feature group skips its OCF endpoint polling, reducing API load. Changes take effect immediately (no restart required).
+
+## Re-authentication
+
+When your SmartThings credentials expire or become invalid, the integration handles it gracefully:
+
+1. **Detection** -- the integration detects 401/403 responses from SmartThings during polling
+2. **Notification** -- HA shows a persistent notification: *"Samsung Soundbar requires re-authentication"*
+3. **Re-auth flow** -- clicking the notification opens a re-authentication form:
+   - **OAuth users**: presented with a new authorization URL to get a fresh auth code
+   - **PAT users**: prompted to paste a new Personal Access Token
+4. **Recovery** -- after re-authenticating, the integration reloads automatically and resumes normal operation
+
+This means:
+- **OAuth users** should rarely see this (tokens auto-refresh). If the refresh token itself expires or is revoked, you'll be prompted once.
+- **PAT users** will see this every 24 hours. If that gets annoying, it's a good signal to switch to OAuth.
+
+## Error Handling
+
+Failed commands (volume changes, sound mode switches, etc.) now show an error notification in the HA UI instead of silently failing. This helps you know immediately if something went wrong, rather than wondering why your tap didn't do anything.
+
+Common error scenarios:
+- **Token expired mid-session** -- triggers re-authentication (see above)
+- **SmartThings API unreachable** -- the integration retries automatically and shows "unavailable" until connectivity is restored
+- **Rate limited (429)** -- automatic retry with exponential backoff; usually resolves within seconds
+- **Command rejected** -- shown as an error toast in the UI (e.g., trying to set a sound mode your model doesn't support)
 
 ## Services
 
@@ -266,6 +292,8 @@ OCF endpoints are polled one at a time on a rotating basis to avoid SmartThings 
 
 State from un-polled OCF endpoints is preserved between cycles using `dataclasses.replace()`, which avoids the common bug where falsy values (Night Mode off, woofer at 0) get incorrectly overwritten.
 
+Write commands (sound mode, EQ preset, etc.) trigger an immediate coordinator refresh after the optimistic UI update, so the state is confirmed from the device within one poll cycle rather than waiting for the rotation to come back around.
+
 ## Entities
 
 | Entity | Platform | Description |
@@ -295,6 +323,15 @@ smartthings devices
 
 If your soundbar doesn't appear, make sure it's set up in the SmartThings mobile app first.
 
+### "Requires re-authentication" notification keeps appearing
+
+If you're using a **PAT**, this is expected every 24 hours. Switch to OAuth for a permanent setup.
+
+If you're using **OAuth** and seeing this repeatedly, your refresh token may have been revoked. Try:
+1. Go to the [Samsung Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects)
+2. Verify your OAuth app is still active
+3. Re-authenticate through the HA notification
+
 ### Features missing or not working
 
 Some OCF endpoints may not be available on all soundbar models. Download diagnostics and check the `state` section to see which fields are populated. You can also inspect your device's capabilities:
@@ -309,9 +346,12 @@ If `execute` is not listed as a capability, the OCF-based features (sound mode, 
 
 The integration automatically retries with backoff. If you see frequent 429 errors in the logs, try disabling feature groups you don't use in the integration options to reduce API calls.
 
-## Diagnostics
+### Commands fail with error notifications
 
-Download diagnostic data from **Settings > Devices & Services > Samsung Soundbar > ... > Download Diagnostics**. All OAuth tokens and credentials are automatically redacted. Include this file when reporting issues.
+If you see error toasts when controlling the soundbar:
+- **Check the HA logs** for the specific SmartThings error code
+- **Verify the soundbar is powered on** -- some commands are rejected when the device is off
+- **Check for SmartThings outages** -- the API occasionally has downtime
 
 ## Supported Devices
 
