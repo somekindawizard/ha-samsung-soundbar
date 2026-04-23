@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any
 
 from homeassistant.components.media_player import (
@@ -28,6 +29,14 @@ from .const import (
 from .coordinator import SoundbarCoordinator, SoundbarState
 
 _LOGGER = logging.getLogger(__name__)
+
+# Fallback sound modes shown in the UI before the first OCF poll completes.
+_DEFAULT_SOUND_MODES = [
+    "adaptive sound",
+    "standard",
+    "surround",
+    "game",
+]
 
 
 async def async_setup_entry(
@@ -130,7 +139,11 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
         await self.coordinator.client.send_standard_command(
             self._device_id, "audioVolume", "setVolume", [target]
         )
-        await self.coordinator.async_request_refresh()
+        # Optimistic update
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, volume=target)
+            )
 
     async def async_volume_up(self) -> None:
         await self.coordinator.client.send_standard_command(
@@ -149,7 +162,11 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
         await self.coordinator.client.send_standard_command(
             self._device_id, "audioMute", cmd
         )
-        await self.coordinator.async_request_refresh()
+        # Optimistic update
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, muted=mute)
+            )
 
     # ── Input source ─────────────────────────────────────────────────
 
@@ -165,7 +182,11 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
         await self.coordinator.client.send_standard_command(
             self._device_id, "samsungvd.audioInputSource", "setInputSource", [source]
         )
-        await self.coordinator.async_request_refresh()
+        # Optimistic update
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, input_source=source)
+            )
 
     # ── Sound mode ───────────────────────────────────────────────────
 
@@ -175,15 +196,19 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
 
     @property
     def sound_mode_list(self) -> list[str] | None:
-        return self._state.supported_sound_modes if self._state else None
+        if not self._state:
+            return _DEFAULT_SOUND_MODES
+        return self._state.supported_sound_modes or _DEFAULT_SOUND_MODES
 
     async def async_select_sound_mode(self, sound_mode: str) -> None:
         await self.coordinator.client.send_execute_command(
             self._device_id, HREF_SOUNDMODE, {PROP_SOUNDMODE: sound_mode}
         )
+        # Optimistic update via coordinator so all listeners are notified
         if self.coordinator.data:
-            self.coordinator.data.sound_mode = sound_mode
-            self.async_write_ha_state()
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, sound_mode=sound_mode)
+            )
 
     # ── Media info ───────────────────────────────────────────────────
 
@@ -201,19 +226,28 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
         await self.coordinator.client.send_standard_command(
             self._device_id, "mediaPlayback", "play"
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, playback_status="playing")
+            )
 
     async def async_media_pause(self) -> None:
         await self.coordinator.client.send_standard_command(
             self._device_id, "mediaPlayback", "pause"
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, playback_status="paused")
+            )
 
     async def async_media_stop(self) -> None:
         await self.coordinator.client.send_standard_command(
             self._device_id, "mediaPlayback", "stop"
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, playback_status="stopped")
+            )
 
     async def async_media_next_track(self) -> None:
         await self.coordinator.client.send_standard_command(
