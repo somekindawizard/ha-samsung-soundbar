@@ -1,164 +1,181 @@
-# Samsung Soundbar for Home Assistant
+<div align="center">
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.12%2B-blue.svg)](https://www.home-assistant.io/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+# 🔊 Samsung Soundbar for Home Assistant
 
-A custom Home Assistant integration for Samsung soundbars (HW-Q990D, HW-Q990C, HW-Q930D, and others) using the SmartThings API. Control power, volume, input sources, sound modes, EQ, per-speaker levels, and more directly from your HA dashboard and automations.
+**Full-featured Home Assistant integration for Samsung soundbars via SmartThings API**
+
+[![HACS][hacs-badge]][hacs-url]
+[![Home Assistant][ha-badge]][ha-url]
+[![GitHub Release][release-badge]][release-url]
+[![License][license-badge]][license-url]
+[![GitHub Last Commit][commit-badge]][commit-url]
+[![GitHub Issues][issues-badge]][issues-url]
+
+Control power, volume, input sources, sound modes, EQ, per-speaker levels, TTS,<br>
+and more — directly from your dashboard and automations.
+
+[Install via HACS](#-installation) · [Setup Guide](#-setup--authentication) · [Services](#-services) · [Report a Bug][issues-url]
+
+</div>
+
+---
 
 > **Built from scratch**, combining the strengths of [homebridge-q990d-soundbar](https://github.com/somekindawizard/homebridge-q990d-soundbar) (OAuth management, robust API client) and [YASSI](https://github.com/samuelspagl/ha_samsung_soundbar) (EQ, per-speaker volume, Space Fit Sound). Modernized for current Home Assistant standards using `DataUpdateCoordinator`, `CoordinatorEntity`, and a proper config flow.
 
 ---
 
-## Table of Contents
+## ⚡ Quick Start
 
-- [Features](#features)
-- [Supported Devices](#supported-devices)
-- [Installation](#installation)
-- [Setup & Authentication](#setup--authentication)
-- [Entity Reference](#entity-reference)
-- [Sound Modes](#sound-modes)
-- [Services](#services)
-- [How It Works](#how-it-works)
-- [Troubleshooting](#troubleshooting)
-- [Credits](#credits)
-- [License](#license)
+```
+1.  Add custom repo in HACS  →  https://github.com/somekindawizard/ha-samsung-soundbar
+2.  Install "Samsung Soundbar" and restart Home Assistant
+3.  Settings → Devices & Services → Add Integration → Samsung Soundbar
+```
+
+> **Need detailed steps?** Jump to [Installation](#-installation) or [Setup & Authentication](#-setup--authentication).
 
 ---
 
-## Features
+## ✨ Features
+
+<table>
+<tr>
+<td width="50%" valign="top">
 
 ### 🎵 Media Player
+- Power on/off control
+- Volume level, step up/down, mute/unmute
+- Input source switching (HDMI, Bluetooth, Wi-Fi, Optical…)
+- Sound mode selection (Adaptive, Standard, Surround, Game…)
+- Play, pause, stop with optimistic state updates
+- Next/previous track control
+- Media info: title, artist, elapsed time, duration
+- Real-time progress bar in HA media player card
 
-| Feature | Description |
-|---|---|
-| **Power** | On/off control via the SmartThings `switch` capability |
-| **Volume** | Set level, step up/down, mute/unmute with optimistic UI updates |
-| **Input Source** | Switch between HDMI, Bluetooth, Wi-Fi, Optical, and more |
-| **Sound Mode** | Adaptive Sound, Standard, Surround, Game, and more (see [Sound Modes](#sound-modes)) |
-| **Media Transport** | Play, pause, and stop with optimistic state updates |
-| **Track Control** | Next/previous track (shown only if your device supports `mediaTrackControl`) |
-| **Media Info** | Title, artist, elapsed time, and duration from `audioTrackData` |
-| **Progress Bar** | Real-time media position tracking in the HA media player card |
+</td>
+<td width="50%" valign="top">
 
 ### 🔊 Audio Controls
+- **Night Mode** — reduce bass and limit volume
+- **Voice Amplifier** — boost dialogue clarity
+- **Bass Boost** — enhance low-frequency output
+- **Active Voice Amplifier** — dynamic dialogue enhancement
+- **Space Fit Sound** — room-aware audio optimization
+- **Woofer Level** — slider from -6 to +6 dB
+- **Equalizer** — EQ preset selector *(optional)*
+- **Per-Speaker Volume** — adjust individual channels
 
-| Feature | Description |
-|---|---|
-| **Advanced Audio Switches** | Night Mode, Voice Amplifier, Bass Boost, Active Voice Amplifier, Space Fit Sound |
-| **Woofer Level** | Number entity with a slider ranging from -6 to +6 dB |
-| **Equalizer** | EQ preset selector (optional; toggle in integration options) |
-| **Per-Speaker Volume** | Service call to adjust individual channels (center, side, rear, etc.) |
-| **Rear Speaker Mode** | Service call to switch rear speakers between front and rear positioning |
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
 
 ### 📢 Play Media & TTS
+- Send TTS announcements to your soundbar
+- Stream any audio URL directly
+- Smart playback modes:
+  - `playTrackAndRestore` — announcements (restores volume)
+  - `playTrackAndResume` — music (resumes previous track)
+  - `playTrack` — simple playback fallback
 
-| Feature | Description |
-|---|---|
-| **TTS Announcements** | Send text-to-speech audio to your soundbar from any HA TTS service |
-| **Play URL** | Stream any audio URL directly on the soundbar |
-| **Smart Playback Modes** | Automatically selects the right SmartThings command: `playTrackAndRestore` for announcements (restores volume after), `playTrackAndResume` for music (resumes previous track), or `playTrack` as a fallback |
-
-### 🎛️ Presets & Calibration
-
-- **Apply Preset** — Set sound mode, EQ, night mode, and woofer level atomically in a single service call.
-- **SpaceFit Calibration** — Button entity that triggers your soundbar's room calibration process.
-
-### 🔍 Discovery & Automation
-
-- **Zeroconf Discovery** — Home Assistant automatically detects Samsung soundbars on your local network.
-- **Device Triggers** — Build automations in the HA UI without knowing entity IDs (triggers: sound mode changed, playback started/paused/stopped, night mode toggled, input source changed).
+</td>
+<td width="50%" valign="top">
 
 ### 🛡️ Reliability
+- **Auto re-auth** — prompts when tokens expire
+- **Error feedback** — failed commands surface in HA UI
+- **Post-write refresh** — immediate state confirmation
+- **Rate-limit handling** — exponential backoff + `Retry-After`
+- **OCF read serialization** — prevents interleaved requests
+- **Optimistic updates** — instant UI feedback
 
-| Feature | Description |
-|---|---|
-| **Automatic Re-authentication** | When tokens expire, HA prompts you to re-authenticate instead of silently failing |
-| **Error Feedback** | Failed commands surface a notification in the HA UI |
-| **Post-Write Refresh** | OCF commands trigger an immediate state refresh to confirm changes |
-| **Rate-Limit Handling** | Automatic retry with exponential backoff and `Retry-After` header support for 429 responses |
-| **OCF Read Serialization** | Per-device locking prevents interleaved OCF execute/status reads |
-| **Optimistic Updates** | UI updates immediately on commands without waiting for the next poll |
+</td>
+</tr>
+</table>
 
----
-
-## Supported Devices
-
-**Tested on:**
-- Samsung HW-Q990D
-- Samsung HW-Q990C
-- Samsung HW-Q930D
-
-**Compatibility:** Should work with any Samsung soundbar that appears in the SmartThings app and exposes the `execute` capability for OCF endpoints. If your model doesn't work, please [open an issue](https://github.com/somekindawizard/ha-samsung-soundbar/issues) with your diagnostics file attached.
+**Also includes:**
+- 🎛️ **Apply Preset** — set sound mode, EQ, night mode, and woofer level atomically in one call
+- 🔍 **Zeroconf Discovery** — automatic detection of soundbars on your network
+- ⚙️ **Device Triggers** — build HA automations without knowing entity IDs
+- 📐 **SpaceFit Calibration** — trigger room calibration via a button entity
 
 ---
 
-## Installation
+## 🎧 Supported Devices
+
+| Status | Models |
+|:---:|---|
+| ✅ Tested | **HW-Q990D** · **HW-Q990C** · **HW-Q930D** |
+| 🔄 Compatible | Any Samsung soundbar visible in SmartThings with `execute` capability |
+
+> **Your model not listed?** It will likely work. If it doesn't, [open an issue][issues-url] with your diagnostics file attached.
+
+---
+
+## 📦 Installation
 
 ### Option A: HACS (Recommended)
 
-1. In HACS, go to **Integrations** and click the three-dot menu.
-2. Select **Custom repositories** and add:
+1. In HACS, go to **Integrations** → three-dot menu → **Custom repositories**
+2. Add this URL with category **Integration**:
    ```
    https://github.com/somekindawizard/ha-samsung-soundbar
    ```
-   with category **Integration**.
-3. Search for **Samsung Soundbar** and click **Install**.
-4. Restart Home Assistant.
+3. Search for **Samsung Soundbar** and click **Install**
+4. **Restart Home Assistant**
 
 ### Option B: Manual
 
-1. Download or clone this repository.
-2. Copy the `custom_components/samsung_soundbar` folder into your Home Assistant `custom_components/` directory.
-3. Restart Home Assistant.
+1. Download or clone this repository
+2. Copy `custom_components/samsung_soundbar` into your HA `custom_components/` directory
+3. **Restart Home Assistant**
 
 ---
 
-## Setup & Authentication
+## 🔐 Setup & Authentication
 
-### Choosing an Authentication Method
+### Choosing an Auth Method
 
-This integration supports two methods for authenticating with SmartThings:
+| | **OAuth** ✅ Recommended | **Personal Access Token** |
+|---|---|---|
+| **Token Lifetime** | 24h (auto-refreshable) | 24h (not refreshable) |
+| **Auto-Refresh** | ✅ Yes | ❌ No |
+| **Re-Auth Frequency** | Rarely (only if refresh token revoked) | Every 24 hours |
+| **Best For** | Permanent installations | Quick testing / OAuth fallback |
 
-| Method | Token Lifetime | Auto-Refresh | Re-Auth Behavior | Recommended For |
-|---|---|---|---|---|
-| **OAuth** ✅ | 24 hours (auto-refreshable) | Yes | Prompts only if refresh token is revoked | Permanent installations |
-| **Personal Access Token (PAT)** | 24 hours (not refreshable) | No | Prompts for a new token every 24h | Quick testing or OAuth fallback |
-
-> **💡 Why is PAT still available?** OAuth setup requires creating a Samsung Developer Workspace project, which can be finicky. PAT lets you get running in 30 seconds to verify the integration works with your soundbar before committing to the full OAuth setup. When the PAT expires, HA will prompt you to enter a new one or reconfigure with OAuth.
+> **💡 Why offer PAT?** OAuth requires a Samsung Developer Workspace project, which can be finicky. PAT lets you verify the integration works in 30 seconds before committing to OAuth. When it expires, HA prompts you to enter a new one or switch to OAuth.
 
 ---
 
-### OAuth Setup (Recommended)
+<details>
+<summary><h3>🔑 OAuth Setup (Recommended) — click to expand</h3></summary>
 
-You can create the required OAuth credentials using either the Samsung Developer Workspace web UI or the SmartThings CLI.
+You can create OAuth credentials via the **web UI** or the **SmartThings CLI**.
 
 #### Via Developer Workspace (Web UI)
 
-1. Navigate to the [Samsung Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects).
-2. Create a **new project** and select **Partner managed OAuth2**.
-3. Set the **Redirect URI** to:
+1. Navigate to the [Samsung Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects)
+2. Create a **new project** → select **Partner managed OAuth2**
+3. Set the **Redirect URI**:
    ```
    https://api.smartthings.com/oauth/callback
    ```
-4. Request the following **scopes**:
+4. Request these **scopes**:
    - `r:devices:*`
    - `x:devices:*`
    - `r:locations:*`
-5. Save your **Client ID** and **Client Secret**.
+5. Save your **Client ID** and **Client Secret**
 
 #### Via SmartThings CLI (Faster)
-
-If you have Node.js installed, the SmartThings CLI can create an OAuth app in one command:
 
 ```bash
 # Install the CLI
 npm install -g @smartthings/cli
 
-# Log in to your Samsung account
+# Log in
 smartthings login
 
-# Create an OAuth app with the required scopes
+# Create an OAuth app
 smartthings apps:oauth:generate \
   --client-name "HA Soundbar" \
   --scope "r:devices:* x:devices:* r:locations:*" \
@@ -167,121 +184,229 @@ smartthings apps:oauth:generate \
 
 Your **Client ID** and **Client Secret** are printed directly in the terminal.
 
-You can also use the CLI to verify your soundbar is visible:
+#### Verify Your Soundbar (Optional)
 
 ```bash
-# List all devices on your account
-smartthings devices
-
-# Get detailed status of a specific device
-smartthings devices:status <device-id>
-
-# See what capabilities your soundbar exposes
-smartthings devices:capabilities <device-id>
+smartthings devices                          # List all devices
+smartthings devices:status <device-id>       # Detailed device status
+smartthings devices:capabilities <device-id> # Supported capabilities
 ```
 
-This is useful for debugging if the integration can't find your soundbar or if certain features don't work on your model.
+</details>
 
 ---
 
-### Personal Access Token Setup (Quick Testing)
+<details>
+<summary><h3>🎫 Personal Access Token Setup (Quick Testing) — click to expand</h3></summary>
 
-1. Go to [SmartThings Tokens](https://account.smartthings.com/tokens).
-2. Generate a new token with the following scopes enabled:
+1. Go to [SmartThings Tokens](https://account.smartthings.com/tokens)
+2. Generate a new token with these scopes:
    - **Devices:** List all devices, See all devices, Control all devices
    - **Locations:** See all locations
-3. Copy the generated token.
+3. Copy the generated token
 
-> ⚠️ **PATs expire after 24 hours** and cannot be automatically refreshed. When your PAT expires, HA will show a notification prompting you to enter a new one. For a permanent setup, use OAuth.
+> ⚠️ **PATs expire after 24 hours** and cannot be auto-refreshed. When expired, HA will prompt you to enter a new one. For permanent use, switch to OAuth.
+
+</details>
 
 ---
 
-### Adding the Integration to Home Assistant
+### Adding the Integration
 
-**Automatic Discovery:**
-If your soundbar is on the same network, Home Assistant may discover it automatically via Zeroconf and prompt you to configure it.
+**🔍 Automatic Discovery:**
+If your soundbar is on the same network, Home Assistant may detect it automatically via Zeroconf.
 
-**Manual Setup:**
+**✋ Manual Setup:**
 
-1. Go to **Settings → Devices & Services → Add Integration**.
-2. Search for **Samsung Soundbar**.
-3. Choose your authentication method (OAuth or PAT).
-4. **For OAuth:** Enter your Client ID and Client Secret, then complete the authorization flow in your browser.
-5. **For PAT:** Paste your Personal Access Token.
-6. Select your soundbar from the list of discovered devices.
-7. (Optional) Adjust the maximum volume slider range.
+1. **Settings** → **Devices & Services** → **Add Integration**
+2. Search for **Samsung Soundbar**
+3. Choose your auth method (OAuth or PAT)
+4. **OAuth:** Enter Client ID + Secret, complete browser authorization
+5. **PAT:** Paste your token
+6. Select your soundbar from the discovered devices
+7. *(Optional)* Adjust the maximum volume slider range
 
 ---
 
 ### Feature Toggles
 
-After setup, go to the integration's **Options** page to enable or disable feature groups:
+After setup, visit the integration's **Options** page to enable/disable features:
 
-| Feature Group | Default | Description |
-|---|---|---|
-| Sound Mode Selector | Enabled | Standalone select entity for sound mode |
-| Advanced Audio Switches | Enabled | Night Mode, Voice Amplifier, Bass Boost toggles |
-| Woofer Level Control | Enabled | Subwoofer level number entity |
-| Equalizer Preset Selector | **Disabled** | EQ preset select entity |
+| Feature Group | Default | Notes |
+|---|:---:|---|
+| Sound Mode Selector | ✅ On | Standalone `select` entity |
+| Advanced Audio Switches | ✅ On | Night Mode, Voice Amp, Bass Boost |
+| Woofer Level Control | ✅ On | Subwoofer `number` entity |
+| Equalizer Preset Selector | ⬚ Off | EQ preset `select` entity |
 
-> **Performance note:** Disabling a feature group skips its OCF endpoint polling, reducing API load. Changes take effect immediately with no restart required.
+> **💡 Performance tip:** Disabling a feature group skips its OCF endpoint polling, reducing API calls. Changes apply immediately with no restart required.
 
 ---
 
-## Entity Reference
-
-The integration creates the following entities for your soundbar:
+## 📋 Entity Reference
 
 | Entity | Platform | Description |
 |---|---|---|
-| Media Player | `media_player` | Main soundbar entity with all playback and volume controls |
-| Night Mode | `switch` | Toggle night mode on/off |
-| Voice Amplifier | `switch` | Toggle voice amplifier on/off |
-| Bass Boost | `switch` | Toggle bass boost on/off |
-| Active Voice Amplifier | `switch` | Toggle active voice amplifier on/off |
-| Space Fit Sound | `switch` | Toggle the Space Fit Sound feature on/off |
+| Media Player | `media_player` | Main entity — playback, volume, source, sound mode |
+| Night Mode | `switch` | Toggle night mode |
+| Voice Amplifier | `switch` | Toggle voice amplifier |
+| Bass Boost | `switch` | Toggle bass boost |
+| Active Voice Amplifier | `switch` | Toggle active voice amplifier |
+| Space Fit Sound | `switch` | Toggle Space Fit Sound |
 | SpaceFit Calibration | `button` | Trigger room calibration |
-| Sound Mode | `select` | Standalone sound mode selector for dashboards and automations |
-| EQ Preset | `select` | Standalone EQ preset selector *(optional, disabled by default)* |
-| Input Source | `select` | Standalone input source selector |
-| Woofer Level | `number` | Subwoofer level slider (-6 to +6 dB) |
-| Volume | `sensor` | Raw volume level for use in automations and templates |
+| Sound Mode | `select` | Standalone sound mode picker |
+| EQ Preset | `select` | EQ preset picker *(optional)* |
+| Input Source | `select` | Standalone input source picker |
+| Woofer Level | `number` | Subwoofer slider (-6 to +6 dB) |
+| Volume | `sensor` | Raw volume for automations/templates |
 
 ---
 
-## Sound Modes
+## 🎛 Services
 
-The integration exposes all sound modes reported by your soundbar through the Samsung OCF `/sec/networkaudio/soundmode` endpoint. The available modes are **dynamically populated from your device** on the first OCF poll, so the exact list depends on your soundbar model and firmware version.
+<details open>
+<summary><strong><code>samsung_soundbar.apply_preset</code></strong> — Set multiple audio settings atomically</summary>
 
-### Default Sound Modes
+&nbsp;
 
-Before the first OCF poll completes (typically within 30 seconds of startup), the integration shows these four fallback modes in the UI:
+Only the fields you provide are changed; everything else stays untouched.
 
-| Sound Mode | Description |
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `sound_mode` | string | | Sound mode name (e.g. `surround`, `adaptive sound`) |
+| `eq_preset` | string | | EQ preset name (e.g. `Music`, `Movie`) |
+| `night_mode` | boolean | | Enable or disable night mode |
+| `woofer_level` | integer | | Woofer level from -6 to +6 |
+
+```yaml
+# Movie night
+service: samsung_soundbar.apply_preset
+data:
+  sound_mode: surround
+  night_mode: true
+  woofer_level: 3
+
+# Music listening
+service: samsung_soundbar.apply_preset
+data:
+  sound_mode: "adaptive sound"
+  eq_preset: Music
+  night_mode: false
+  woofer_level: 0
+```
+
+</details>
+
+<details>
+<summary><strong><code>samsung_soundbar.set_speaker_level</code></strong> — Adjust individual speaker channels</summary>
+
+&nbsp;
+
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `speaker_channel` | string | ✅ | `Spk_Center`, `Spk_Side`, `Spk_Wide`, `Spk_Front_Top`, `Spk_Rear`, `Spk_Rear_Top` |
+| `level` | integer | ✅ | Volume level from -6 to +6 dB |
+
+```yaml
+service: samsung_soundbar.set_speaker_level
+data:
+  speaker_channel: Spk_Center
+  level: 3
+```
+
+</details>
+
+<details>
+<summary><strong><code>samsung_soundbar.set_rear_speaker_mode</code></strong> — Switch rear speaker positioning</summary>
+
+&nbsp;
+
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `mode` | string | ✅ | Either `Front` or `Rear` |
+
+```yaml
+service: samsung_soundbar.set_rear_speaker_mode
+data:
+  mode: Rear
+```
+
+</details>
+
+<details>
+<summary><strong>Play Media & TTS Examples</strong></summary>
+
+&nbsp;
+
+```yaml
+# TTS announcement
+service: tts.speak
+target:
+  entity_id: media_player.soundbar
+data:
+  message: "Someone is at the front door"
+
+# Play an audio URL
+service: media_player.play_media
+target:
+  entity_id: media_player.soundbar
+data:
+  media_content_type: music
+  media_content_id: "https://example.com/doorbell.mp3"
+
+# Announcement with custom volume
+service: media_player.play_media
+target:
+  entity_id: media_player.soundbar
+data:
+  media_content_type: music
+  media_content_id: "https://example.com/alert.mp3"
+  announce: true
+  extra:
+    volume: 50
+```
+
+</details>
+
+---
+
+## 🎵 Sound Modes
+
+Sound modes are dynamically populated from your device via the Samsung OCF `/sec/networkaudio/soundmode` endpoint. The exact list depends on your soundbar model and firmware.
+
+<details>
+<summary><strong>Default & Additional Sound Modes</strong> — click to expand</summary>
+
+&nbsp;
+
+#### Default Modes (available before first OCF poll)
+
+| Mode | Description |
 |---|---|
-| **Adaptive Sound** | Analyzes the audio content in real time and automatically optimizes the sound profile. Best for mixed-use scenarios (movies, music, dialogue) where you want the soundbar to make intelligent adjustments without manual intervention. |
-| **Standard** | A balanced, neutral sound profile with no emphasis on any particular frequency range. Good as a general-purpose default. |
-| **Surround** | Expands the soundstage to create a more immersive, room-filling surround sound experience. Ideal for movies and TV shows with surround-encoded audio. |
-| **Game** | Optimized for gaming with enhanced spatial cues and directional audio. Emphasizes positional accuracy to help locate in-game sounds. |
+| **Adaptive Sound** | Real-time content analysis with automatic optimization. Best for mixed-use. |
+| **Standard** | Balanced, neutral profile. Good general-purpose default. |
+| **Surround** | Expanded soundstage for immersive surround experience. Ideal for movies/TV. |
+| **Game** | Enhanced spatial cues and directional audio for gaming. |
 
-### Additional Modes
+#### Additional Modes (model-dependent)
 
-Depending on your model, your soundbar may also report additional modes such as:
-
-| Sound Mode | Description |
+| Mode | Description |
 |---|---|
-| **Game Pro** | An enhanced gaming mode with further optimized spatial audio processing. |
-| **Movie** | Tuned specifically for cinematic audio with emphasis on dialogue clarity and low-frequency effects. |
-| **Music** | Emphasizes musical clarity and dynamic range for a richer music listening experience. |
-| **Voice** | Prioritizes dialogue and vocal clarity, making it easier to hear speech in movies and TV. |
+| **Game Pro** | Enhanced gaming mode with further optimized spatial processing. |
+| **Movie** | Cinematic audio: dialogue clarity + low-frequency effects. |
+| **Music** | Musical clarity and dynamic range emphasis. |
+| **Voice** | Prioritizes dialogue/vocal clarity for speech-heavy content. |
 
-> **💡 Tip:** To see the exact sound modes your soundbar supports, check the **Sound Mode** select entity in HA after the first poll cycle completes, or inspect the `supported_sound_modes` field in your integration diagnostics.
+> **💡 Tip:** Check the **Sound Mode** select entity after the first poll, or inspect `supported_sound_modes` in your diagnostics.
 
-### Using Sound Modes
+</details>
 
-Sound modes can be controlled in three ways:
+<details>
+<summary><strong>Sound Mode Control Methods</strong> — click to expand</summary>
 
-**1. Media Player entity** (built-in HA sound mode picker):
+&nbsp;
+
+**1. Via Media Player entity:**
 ```yaml
 service: media_player.select_sound_mode
 target:
@@ -290,7 +415,7 @@ data:
   sound_mode: "adaptive sound"
 ```
 
-**2. Standalone Select entity** (for dashboards and automations):
+**2. Via standalone Select entity:**
 ```yaml
 service: select.select_option
 target:
@@ -299,7 +424,7 @@ data:
   option: "surround"
 ```
 
-**3. Apply Preset service** (combine with other audio settings):
+**3. Via Apply Preset service:**
 ```yaml
 service: samsung_soundbar.apply_preset
 data:
@@ -308,10 +433,15 @@ data:
   night_mode: false
 ```
 
-### Sound Mode Automation Examples
+</details>
+
+<details>
+<summary><strong>Automation Examples</strong> — click to expand</summary>
+
+&nbsp;
 
 ```yaml
-# Switch to Game mode when a gaming console turns on
+# Switch to Game mode when PS5 starts
 automation:
   - alias: "Game mode when PS5 starts"
     trigger:
@@ -326,7 +456,7 @@ automation:
         data:
           sound_mode: "game"
 
-# Movie night: surround + boosted woofer when Plex starts
+# Movie night: surround + boosted woofer
 automation:
   - alias: "Movie night preset"
     trigger:
@@ -343,7 +473,7 @@ automation:
           woofer_level: 3
           night_mode: false
 
-# Late night viewing: quieter settings
+# Late night: quieter settings
 automation:
   - alias: "Late night mode"
     trigger:
@@ -361,123 +491,18 @@ automation:
           woofer_level: -2
 ```
 
----
-
-## Services
-
-### `samsung_soundbar.apply_preset`
-
-Set multiple audio settings atomically in a single call. Only the fields you provide are changed; everything else remains untouched.
-
-**Fields:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sound_mode` | string | No | Sound mode name (e.g., `surround`, `adaptive sound`) |
-| `eq_preset` | string | No | EQ preset name (e.g., `Music`, `Movie`) |
-| `night_mode` | boolean | No | Enable or disable night mode |
-| `woofer_level` | integer | No | Woofer level from -6 to +6 |
-
-**Examples:**
-
-```yaml
-# Movie night preset
-service: samsung_soundbar.apply_preset
-data:
-  sound_mode: surround
-  night_mode: true
-  woofer_level: 3
-
-# Music preset
-service: samsung_soundbar.apply_preset
-data:
-  sound_mode: "adaptive sound"
-  eq_preset: Music
-  night_mode: false
-  woofer_level: 0
-```
+</details>
 
 ---
 
-### `samsung_soundbar.set_speaker_level`
+## ⚙️ How It Works
 
-Adjust the volume of an individual speaker channel.
+This integration communicates directly with the SmartThings REST API using both standard capabilities and undocumented Samsung OCF `execute` endpoints. **No dependency on `pysmartthings`.**
 
-**Fields:**
+<details>
+<summary><strong>Standard SmartThings Capabilities</strong></summary>
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `speaker_channel` | string | Yes | One of: `Spk_Center`, `Spk_Side`, `Spk_Wide`, `Spk_Front_Top`, `Spk_Rear`, `Spk_Rear_Top` |
-| `level` | integer | Yes | Volume level from -6 to +6 dB |
-
-**Example:**
-
-```yaml
-service: samsung_soundbar.set_speaker_level
-data:
-  speaker_channel: Spk_Center
-  level: 3
-```
-
----
-
-### `samsung_soundbar.set_rear_speaker_mode`
-
-Switch rear speakers between front and rear positioning.
-
-**Fields:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `mode` | string | Yes | Either `Front` or `Rear` |
-
-**Example:**
-
-```yaml
-service: samsung_soundbar.set_rear_speaker_mode
-data:
-  mode: Rear
-```
-
----
-
-### Play Media & TTS Examples
-
-```yaml
-# TTS announcement (e.g., doorbell or alarm)
-service: tts.speak
-target:
-  entity_id: media_player.soundbar
-data:
-  message: "Someone is at the front door"
-
-# Play an audio URL
-service: media_player.play_media
-target:
-  entity_id: media_player.soundbar
-data:
-  media_content_type: music
-  media_content_id: "https://example.com/doorbell.mp3"
-
-# Announcement with a custom volume level
-service: media_player.play_media
-target:
-  entity_id: media_player.soundbar
-data:
-  media_content_type: music
-  media_content_id: "https://example.com/alert.mp3"
-  announce: true
-  extra:
-    volume: 50
-```
-
----
-
-## How It Works
-
-This integration communicates directly with the SmartThings REST API using both standard capabilities and undocumented Samsung OCF `execute` endpoints. There is **no dependency on `pysmartthings`**.
-
-### Standard SmartThings Capabilities
+&nbsp;
 
 | Feature | Capability | Commands |
 |---|---|---|
@@ -490,7 +515,12 @@ This integration communicates directly with the SmartThings REST API using both 
 | TTS / Play Media | `audioNotification` | `playTrack`, `playTrackAndRestore`, `playTrackAndResume` |
 | Media Info | `audioTrackData` | *(read-only)* title, artist, elapsed, total |
 
-### Samsung OCF Endpoints (via `execute` capability)
+</details>
+
+<details>
+<summary><strong>Samsung OCF Endpoints</strong></summary>
+
+&nbsp;
 
 | Feature | OCF Endpoint | Property |
 |---|---|---|
@@ -505,35 +535,46 @@ This integration communicates directly with the SmartThings REST API using both 
 | Active Voice Amp | `/sec/networkaudio/activeVoiceAmplifier` | `x.com.samsung.networkaudio.activeVoiceAmplifier` |
 | Space Fit Sound | `/sec/networkaudio/spacefitSound` | `x.com.samsung.networkaudio.spacefitSound` |
 
-### Polling Strategy
+</details>
 
-- **OCF endpoints** are polled one at a time on a rotating basis to avoid SmartThings rate limiting. A full OCF refresh takes approximately **2 minutes** (at a 30-second poll interval with 3 to 4 enabled OCF targets).
-- **Standard capabilities** are fetched on every poll cycle.
-- **State preservation:** Un-polled OCF endpoint values are preserved between cycles using `dataclasses.replace()`, preventing a common bug where falsy values (Night Mode off, woofer at 0) get incorrectly overwritten.
-- **Post-write refresh:** Write commands (sound mode, EQ, etc.) trigger an immediate coordinator refresh after the optimistic UI update, so device state is confirmed within one cycle rather than waiting for the rotation to come back around.
+<details>
+<summary><strong>Polling Strategy</strong></summary>
 
----
+&nbsp;
 
-## Re-authentication
+- **OCF endpoints** are polled one at a time on a rotating basis to avoid rate limiting. A full OCF refresh takes ~2 minutes (30s poll interval with 3-4 enabled targets).
+- **Standard capabilities** are fetched every poll cycle.
+- **State preservation:** Un-polled OCF values are preserved between cycles using `dataclasses.replace()`, preventing falsy values (Night Mode off, woofer at 0) from being overwritten.
+- **Post-write refresh:** Write commands trigger an immediate coordinator refresh, so device state is confirmed within one cycle.
 
-When your SmartThings credentials expire or become invalid, the integration handles it gracefully:
+</details>
 
-1. **Detection** — The integration detects `401`/`403` responses during polling.
+<details>
+<summary><strong>Re-authentication Flow</strong></summary>
+
+&nbsp;
+
+1. **Detection** — The integration detects `401`/`403` responses during polling
 2. **Notification** — A persistent notification appears: *"Samsung Soundbar requires re-authentication."*
-3. **Re-auth flow** — Clicking the notification opens a re-authentication form:
-   - **OAuth users:** Presented with a new authorization URL to get a fresh auth code.
-   - **PAT users:** Prompted to paste a new Personal Access Token.
-4. **Recovery** — After re-authenticating, the integration reloads automatically and resumes normal operation.
+3. **Re-auth flow** — Click the notification to open re-authentication:
+   - **OAuth:** Presented with a new authorization URL
+   - **PAT:** Prompted to paste a new token
+4. **Recovery** — Integration reloads automatically and resumes
 
-**What to expect:**
-- **OAuth users** should rarely see this, since tokens auto-refresh. You will only be prompted if the refresh token itself expires or is revoked.
-- **PAT users** will see this every 24 hours. If that becomes cumbersome, it is a good signal to switch to OAuth.
+**Expected frequency:**
+- **OAuth users:** Rarely. Only if the refresh token itself is revoked.
+- **PAT users:** Every 24 hours. If that becomes cumbersome, switch to OAuth.
+
+</details>
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### Soundbar not found during setup
+<details>
+<summary><strong>Soundbar not found during setup</strong></summary>
+
+&nbsp;
 
 Verify your device is visible to SmartThings:
 
@@ -543,44 +584,88 @@ smartthings devices
 
 If your soundbar doesn't appear, make sure it has been set up in the **SmartThings mobile app** first.
 
-### "Requires re-authentication" keeps appearing
+</details>
+
+<details>
+<summary><strong>"Requires re-authentication" keeps appearing</strong></summary>
+
+&nbsp;
 
 | Auth Method | Cause | Solution |
 |---|---|---|
-| **PAT** | Expected behavior (24-hour expiration) | Switch to OAuth for a permanent setup |
-| **OAuth** | Refresh token revoked or expired | Verify your OAuth app is active in the [Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects), then re-authenticate via the HA notification |
+| **PAT** | Expected (24h expiration) | Switch to OAuth |
+| **OAuth** | Refresh token revoked/expired | Verify your OAuth app is active in the [Developer Workspace](https://smartthings.developer.samsung.com/workspace/projects), then re-auth via HA notification |
 
-### Features missing or not working
+</details>
 
-Some OCF endpoints may not be available on all soundbar models.
+<details>
+<summary><strong>Features missing or not working</strong></summary>
 
-1. Download **diagnostics** from the integration page and check the `state` section for populated fields.
-2. Inspect your device's capabilities:
+&nbsp;
+
+Some OCF endpoints may not be available on all models.
+
+1. Download **diagnostics** from the integration page and check the `state` section
+2. Inspect capabilities:
    ```bash
    smartthings devices:capabilities <device-id>
    ```
-3. If `execute` is **not** listed as a capability, the OCF-based features (sound mode, night mode, woofer, EQ) will not work on your model.
+3. If `execute` is **not** listed, OCF-based features (sound mode, night mode, woofer, EQ) won't work on your model
 
-### Rate limiting (429 errors)
+</details>
 
-The integration retries automatically with exponential backoff. If you see frequent 429 errors in the logs, try **disabling feature groups** you don't use in the integration options to reduce API calls.
+<details>
+<summary><strong>Rate limiting (429 errors)</strong></summary>
 
-### Commands fail with error notifications
+&nbsp;
 
-If you see error toasts when controlling the soundbar:
+The integration retries automatically with exponential backoff. If you see frequent 429 errors, **disable feature groups** you don't use in the integration options to reduce API calls.
 
-1. **Check the HA logs** for the specific SmartThings error code.
-2. **Verify the soundbar is powered on.** Some commands are rejected when the device is off.
-3. **Check for SmartThings outages.** The API occasionally has downtime.
+</details>
+
+<details>
+<summary><strong>Commands fail with error notifications</strong></summary>
+
+&nbsp;
+
+1. **Check HA logs** for the specific SmartThings error code
+2. **Verify the soundbar is powered on** — some commands are rejected when off
+3. **Check for SmartThings outages** — the API occasionally has downtime
+
+</details>
 
 ---
 
-## Credits
+## 🙏 Credits
 
-- SmartThings OCF endpoint documentation: [YASSI Docs](https://ha-samsung-soundbar.vercel.app/)
-- Original YASSI integration by [@samuelspagl](https://github.com/samuelspagl)
-- OAuth pattern and API client from [homebridge-q990d-soundbar](https://github.com/somekindawizard/homebridge-q990d-soundbar)
+| | |
+|---|---|
+| OCF endpoint documentation | [YASSI Docs](https://ha-samsung-soundbar.vercel.app/) |
+| Original YASSI integration | [@samuelspagl](https://github.com/samuelspagl) |
+| OAuth pattern & API client | [homebridge-q990d-soundbar](https://github.com/somekindawizard/homebridge-q990d-soundbar) |
 
-## License
+## 📄 License
 
 [MIT](LICENSE)
+
+---
+
+<div align="center">
+
+**[⬆ Back to top](#-samsung-soundbar-for-home-assistant)**
+
+</div>
+
+<!-- Badge References -->
+[hacs-badge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=flat-square
+[hacs-url]: https://hacs.xyz
+[ha-badge]: https://img.shields.io/badge/Home%20Assistant-2024.12%2B-blue.svg?style=flat-square&logo=home-assistant&logoColor=white
+[ha-url]: https://www.home-assistant.io/
+[release-badge]: https://img.shields.io/github/v/release/somekindawizard/ha-samsung-soundbar?style=flat-square&color=brightgreen
+[release-url]: https://github.com/somekindawizard/ha-samsung-soundbar/releases/latest
+[license-badge]: https://img.shields.io/github/license/somekindawizard/ha-samsung-soundbar?style=flat-square&color=green
+[license-url]: LICENSE
+[commit-badge]: https://img.shields.io/github/last-commit/somekindawizard/ha-samsung-soundbar?style=flat-square
+[commit-url]: https://github.com/somekindawizard/ha-samsung-soundbar/commits
+[issues-badge]: https://img.shields.io/github/issues/somekindawizard/ha-samsung-soundbar?style=flat-square
+[issues-url]: https://github.com/somekindawizard/ha-samsung-soundbar/issues
