@@ -17,6 +17,7 @@ A custom Home Assistant integration for Samsung soundbars (HW-Q990D, HW-Q990C, H
 - [Installation](#installation)
 - [Setup & Authentication](#setup--authentication)
 - [Entity Reference](#entity-reference)
+- [Sound Modes](#sound-modes)
 - [Services](#services)
 - [How It Works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
@@ -34,7 +35,7 @@ A custom Home Assistant integration for Samsung soundbars (HW-Q990D, HW-Q990C, H
 | **Power** | On/off control via the SmartThings `switch` capability |
 | **Volume** | Set level, step up/down, mute/unmute with optimistic UI updates |
 | **Input Source** | Switch between HDMI, Bluetooth, Wi-Fi, Optical, and more |
-| **Sound Mode** | Adaptive, Standard, Surround, Game, etc. (dynamically populated per device) |
+| **Sound Mode** | Adaptive Sound, Standard, Surround, Game, and more (see [Sound Modes](#sound-modes)) |
 | **Media Transport** | Play, pause, and stop with optimistic state updates |
 | **Track Control** | Next/previous track (shown only if your device supports `mediaTrackControl`) |
 | **Media Info** | Title, artist, elapsed time, and duration from `audioTrackData` |
@@ -245,6 +246,120 @@ The integration creates the following entities for your soundbar:
 | Input Source | `select` | Standalone input source selector |
 | Woofer Level | `number` | Subwoofer level slider (-6 to +6 dB) |
 | Volume | `sensor` | Raw volume level for use in automations and templates |
+
+---
+
+## Sound Modes
+
+The integration exposes all sound modes reported by your soundbar through the Samsung OCF `/sec/networkaudio/soundmode` endpoint. The available modes are **dynamically populated from your device** on the first OCF poll, so the exact list depends on your soundbar model and firmware version.
+
+### Default Sound Modes
+
+Before the first OCF poll completes (typically within 30 seconds of startup), the integration shows these four fallback modes in the UI:
+
+| Sound Mode | Description |
+|---|---|
+| **Adaptive Sound** | Analyzes the audio content in real time and automatically optimizes the sound profile. Best for mixed-use scenarios (movies, music, dialogue) where you want the soundbar to make intelligent adjustments without manual intervention. |
+| **Standard** | A balanced, neutral sound profile with no emphasis on any particular frequency range. Good as a general-purpose default. |
+| **Surround** | Expands the soundstage to create a more immersive, room-filling surround sound experience. Ideal for movies and TV shows with surround-encoded audio. |
+| **Game** | Optimized for gaming with enhanced spatial cues and directional audio. Emphasizes positional accuracy to help locate in-game sounds. |
+
+### Additional Modes
+
+Depending on your model, your soundbar may also report additional modes such as:
+
+| Sound Mode | Description |
+|---|---|
+| **Game Pro** | An enhanced gaming mode with further optimized spatial audio processing. |
+| **Movie** | Tuned specifically for cinematic audio with emphasis on dialogue clarity and low-frequency effects. |
+| **Music** | Emphasizes musical clarity and dynamic range for a richer music listening experience. |
+| **Voice** | Prioritizes dialogue and vocal clarity, making it easier to hear speech in movies and TV. |
+
+> **💡 Tip:** To see the exact sound modes your soundbar supports, check the **Sound Mode** select entity in HA after the first poll cycle completes, or inspect the `supported_sound_modes` field in your integration diagnostics.
+
+### Using Sound Modes
+
+Sound modes can be controlled in three ways:
+
+**1. Media Player entity** (built-in HA sound mode picker):
+```yaml
+service: media_player.select_sound_mode
+target:
+  entity_id: media_player.soundbar
+data:
+  sound_mode: "adaptive sound"
+```
+
+**2. Standalone Select entity** (for dashboards and automations):
+```yaml
+service: select.select_option
+target:
+  entity_id: select.soundbar_sound_mode
+data:
+  option: "surround"
+```
+
+**3. Apply Preset service** (combine with other audio settings):
+```yaml
+service: samsung_soundbar.apply_preset
+data:
+  sound_mode: "game"
+  woofer_level: 4
+  night_mode: false
+```
+
+### Sound Mode Automation Examples
+
+```yaml
+# Switch to Game mode when a gaming console turns on
+automation:
+  - alias: "Game mode when PS5 starts"
+    trigger:
+      - platform: state
+        entity_id: media_player.soundbar
+        attribute: source
+        to: "HDMI2"
+    action:
+      - service: media_player.select_sound_mode
+        target:
+          entity_id: media_player.soundbar
+        data:
+          sound_mode: "game"
+
+# Movie night: surround + boosted woofer when Plex starts
+automation:
+  - alias: "Movie night preset"
+    trigger:
+      - platform: state
+        entity_id: media_player.soundbar
+        to: "playing"
+    condition:
+      - condition: time
+        after: "19:00:00"
+    action:
+      - service: samsung_soundbar.apply_preset
+        data:
+          sound_mode: "surround"
+          woofer_level: 3
+          night_mode: false
+
+# Late night viewing: quieter settings
+automation:
+  - alias: "Late night mode"
+    trigger:
+      - platform: time
+        at: "22:00:00"
+    condition:
+      - condition: state
+        entity_id: media_player.soundbar
+        state: "playing"
+    action:
+      - service: samsung_soundbar.apply_preset
+        data:
+          sound_mode: "adaptive sound"
+          night_mode: true
+          woofer_level: -2
+```
 
 ---
 
