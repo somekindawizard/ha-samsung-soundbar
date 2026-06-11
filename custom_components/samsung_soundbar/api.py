@@ -37,7 +37,7 @@ JITTER_MAX = 0.5  # seconds
 
 
 class SoundbarAuthError(HomeAssistantError):
-    """Raised when SmartThings returns 401/403 (re-authentication required)."""
+    """Raised when SmartThings rejects the credentials (re-authentication required)."""
 
 
 class SoundbarCommandError(HomeAssistantError):
@@ -105,7 +105,8 @@ class SmartThingsClient:
     async def ensure_token(self) -> None:
         """Refresh the access token if it is near expiry.
 
-        Raises SoundbarAuthError if the refresh fails.
+        Raises SoundbarAuthError if SmartThings rejects the credentials,
+        SoundbarCommandError for transient (retryable) failures.
         """
         if not self._tokens.refresh_token or not self.token_needs_refresh():
             return
@@ -133,7 +134,12 @@ class SmartThingsClient:
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
             ) as resp:
-                if resp.status in (401, 403):
+                # The token endpoint rejects bad credentials with 400
+                # (invalid_grant for an expired/revoked refresh token)
+                # or 401/403. Only these mean re-auth is required;
+                # anything else (5xx, network) is transient and must
+                # stay retryable so a blip doesn't force a reauth.
+                if resp.status in (400, 401, 403):
                     raise SoundbarAuthError(
                         f"Token refresh failed with HTTP {resp.status}. "
                         "Re-authentication required."
@@ -157,7 +163,7 @@ class SmartThingsClient:
             raise
         except Exception as err:
             _LOGGER.error("Failed to refresh SmartThings token: %s", err)
-            raise SoundbarAuthError(
+            raise SoundbarCommandError(
                 f"Token refresh failed: {err}"
             ) from err
 
@@ -185,7 +191,7 @@ class SmartThingsClient:
     ) -> dict[str, Any] | None:
         """Make an API request with automatic retry on 429 rate limits.
 
-        Raises SoundbarAuthError on 401/403.
+        Raises SoundbarAuthError on 401.
         Raises SoundbarCommandError on other failures.
         Respects the Retry-After header when present. Falls back to
         exponential backoff with jitter.
@@ -199,8 +205,11 @@ class SmartThingsClient:
                 async with self._session.request(
                     method, url, json=json, headers=self._headers()
                 ) as resp:
-                    # Auth failures surface immediately for reauth handling
-                    if resp.status in (401, 403):
+                    # Auth failures surface immediately for reauth handling.
+                    # Only 401 is treated as terminal: SmartThings can
+                    # return 403 transiently for non-auth reasons, and
+                    # that must not tear the integration down.
+                    if resp.status == 401:
                         raise SoundbarAuthError(
                             f"SmartThings API returned {resp.status} for "
                             f"{method} {path}. Re-authentication required."
@@ -268,7 +277,7 @@ class SmartThingsClient:
     ) -> None:
         """Send an OCF execute command (the undocumented /sec/networkaudio endpoints).
 
-        Raises SoundbarAuthError on 401/403.
+        Raises SoundbarAuthError on 401.
         Raises SoundbarCommandError on other failures.
         """
         body = {
@@ -293,7 +302,7 @@ class SmartThingsClient:
     ) -> None:
         """Send a standard SmartThings capability command.
 
-        Raises SoundbarAuthError on 401/403.
+        Raises SoundbarAuthError on 401.
         Raises SoundbarCommandError on other failures.
         """
         cmd: dict[str, Any] = {
@@ -310,7 +319,7 @@ class SmartThingsClient:
     async def send_switch_command(self, device_id: str, on: bool) -> None:
         """Send a switch on/off command.
 
-        Raises SoundbarAuthError on 401/403.
+        Raises SoundbarAuthError on 401.
         Raises SoundbarCommandError on other failures.
         """
         await self.send_standard_command(
@@ -322,7 +331,7 @@ class SmartThingsClient:
     async def get_device_status(self, device_id: str) -> dict[str, Any] | None:
         """Fetch full device status with a short TTL cache.
 
-        Raises SoundbarAuthError on 401/403 so the coordinator can
+        Raises SoundbarAuthError on 401 so the coordinator can
         trigger re-authentication.
         """
         now = time.time()
@@ -347,7 +356,7 @@ class SmartThingsClient:
     async def get_execute_status(self, device_id: str) -> dict[str, Any] | None:
         """Read the execute capability status (OCF payload).
 
-        Raises SoundbarAuthError on 401/403.
+        Raises SoundbarAuthError on 401.
         """
         try:
             result = await self._request(
@@ -398,7 +407,7 @@ class SmartThingsClient:
         Serialized per-device with a lock to prevent interleaved execute
         commands from clobbering each other's status response.
 
-        Raises SoundbarAuthError on 401/403 (propagated immediately).
+        Raises SoundbarAuthError on 401 (propagated immediately).
         """
         async with self._get_ocf_lock(device_id):
             # Auth errors propagate immediately through the lock
