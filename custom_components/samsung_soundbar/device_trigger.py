@@ -44,11 +44,17 @@ TRIGGER_SCHEMA = DEVICE_TRIGGER_BASE_SCHEMA.extend(
 )
 
 # Map trigger types to the entity suffix and state values
-_TRIGGER_MAP: dict[str, tuple[str, str | None, str | None]] = {
+_TRIGGER_MAP: dict[str, tuple[str, str | list[str] | None, str | None]] = {
     # (entity_suffix, from_state, to_state)
     "playback_started": ("media_player", None, "playing"),
     "playback_paused": ("media_player", None, "paused"),
-    "playback_stopped": ("media_player", None, "off"),
+    # A soundbar that stops playing while powered reports "on", never
+    # "off" (that's power-off), so match leaving any playback state.
+    "playback_stopped": (
+        "media_player",
+        ["playing", "paused", "buffering"],
+        "on",
+    ),
     "night_mode_on": ("night_mode", None, "on"),
     "night_mode_off": ("night_mode", None, "off"),
 }

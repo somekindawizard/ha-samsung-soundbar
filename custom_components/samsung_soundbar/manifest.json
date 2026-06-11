@@ -13,12 +13,6 @@
   "zeroconf": [
     {
       "type": "_soundbar._tcp.local."
-    },
-    {
-      "type": "_spotify-connect._tcp.local.",
-      "properties": {
-        "manufacturer": "samsung*"
-      }
     }
   ]
 }
