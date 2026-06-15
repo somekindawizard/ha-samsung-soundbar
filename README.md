@@ -172,17 +172,16 @@ You can create OAuth credentials via the **web UI** or the **SmartThings CLI**.
 # Install the CLI
 npm install -g @smartthings/cli
 
-# Log in
-smartthings login
-
-# Create an OAuth app
-smartthings apps:oauth:generate \
-  --client-name "HA Soundbar" \
-  --scope "r:devices:* x:devices:* r:locations:*" \
-  --redirect-uri "https://api.smartthings.com/oauth/callback"
+# Create an OAuth app. The CLI opens a browser to log in on first use
+# (there is no separate "login" command), then prompts interactively for
+# the display name, scopes, and redirect URI.
+smartthings apps:create
+#   Display name:   HA Soundbar
+#   Scopes:         r:devices:*  x:devices:*  r:locations:*
+#   Redirect URI:   https://api.smartthings.com/oauth/callback
 ```
 
-Your **Client ID** and **Client Secret** are printed directly in the terminal.
+Your **Client ID** and **Client Secret** are printed in the terminal when the app is created.
 
 #### Verify Your Soundbar (Optional)
 
