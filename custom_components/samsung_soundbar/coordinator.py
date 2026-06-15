@@ -205,15 +205,15 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
             # Device info (first poll only)
             #
             # OCF short codes:
-            #   mnmn -> manufacturer name
             #   mnmo -> model number
             #   mnfv -> manufacturer's firmware version
+            #
+            # NOTE: Samsung soundbars report a firmware/build string in the
+            # OCF manufacturerName/mnmn fields (e.g. "SAT-MT8532D24WWC-1051.0"),
+            # so trusting them shows that string as the device manufacturer.
+            # This is the Samsung Soundbar integration, so the manufacturer is
+            # always Samsung; only model and firmware are read from OCF.
             if self._first_poll:
-                manufacturer = (
-                    _nested(main, "ocf", "manufacturerName", "value")
-                    or _nested(main, "ocf", "mnmn", "value")
-                    or "Samsung"
-                )
                 model = (
                     _nested(main, "ocf", "modelNumber", "value")
                     or _nested(main, "ocf", "mnmo", "value")
@@ -224,7 +224,7 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
                     or _nested(main, "ocf", "mnfv", "value")
                     or ""
                 )
-                state.manufacturer = manufacturer
+                state.manufacturer = "Samsung"
                 state.model = model
                 state.firmware_version = firmware
                 self._first_poll = False
@@ -240,7 +240,12 @@ class SoundbarCoordinator(DataUpdateCoordinator[SoundbarState]):
             if self.options.get(OPT_ENABLE_EQ, False):
                 ocf_targets.append("eq")
 
-            if ocf_targets:
+            # Only poll the OCF execute endpoints while the device is on.
+            # In standby the /sec/networkaudio/* endpoints don't respond, so
+            # polling them would log a warning and burn API calls (execute +
+            # retries per endpoint) every cycle for no benefit. Values from
+            # the last on-state are carried forward via replace(self.data).
+            if ocf_targets and state.power:
                 idx = self._ocf_index % len(ocf_targets)
                 target = ocf_targets[idx]
                 self._ocf_index += 1
