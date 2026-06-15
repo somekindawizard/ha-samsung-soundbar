@@ -46,6 +46,10 @@ class SoundbarSwitchDef:
     state_fn: Callable[[SoundbarState], bool]
     href: str
     prop: str
+    # Whether the coordinator reads this feature's state back from the
+    # device. For features with no readback we keep the optimistic state
+    # sticky so the toggle doesn't snap back to "off" on the next poll.
+    has_readback: bool = True
 
 
 SWITCH_DEFINITIONS: list[SoundbarSwitchDef] = [
@@ -77,17 +81,19 @@ SWITCH_DEFINITIONS: list[SoundbarSwitchDef] = [
         key="active_voice_amplifier",
         name="Active Voice Amplifier",
         icon="mdi:account-voice",
-        state_fn=lambda _: False,  # no coordinator state yet — service-only
+        state_fn=lambda _: False,  # no readback — optimistic state only
         href=HREF_ACTIVE_VOICE_AMP,
         prop=PROP_ACTIVE_VOICE_AMP,
+        has_readback=False,
     ),
     SoundbarSwitchDef(
         key="space_fit_sound",
         name="Space Fit Sound",
         icon="mdi:surround-sound",
-        state_fn=lambda _: False,  # no coordinator state yet — service-only
+        state_fn=lambda _: False,  # no readback — optimistic state only
         href=HREF_SPACEFIT_SOUND,
         prop=PROP_SPACEFIT_SOUND,
+        has_readback=False,
     ),
 ]
 
@@ -173,6 +179,9 @@ class SoundbarSwitch(CoordinatorEntity[SoundbarCoordinator], SwitchEntity):
         await self.coordinator.async_request_refresh()
 
     def _handle_coordinator_update(self) -> None:
-        # Clear optimistic state once coordinator has fresh data
-        self._optimistic_state = None
+        # Clear optimistic state once the coordinator has fresh readback.
+        # Features without readback keep their optimistic state so the
+        # toggle doesn't revert to "off" on the next poll.
+        if self._defn.has_readback:
+            self._optimistic_state = None
         super()._handle_coordinator_update()

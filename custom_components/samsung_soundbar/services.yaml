@@ -47,3 +47,44 @@ set_rear_speaker_mode:
           options:
             - "Front"
             - "Rear"
+
+apply_preset:
+  name: Apply Preset
+  description: >-
+    Apply a sound profile atomically. Only the fields you provide are
+    changed, so you can set any combination in a single call.
+  target:
+    device:
+      integration: samsung_soundbar
+  fields:
+    sound_mode:
+      name: Sound Mode
+      description: Sound mode to set (e.g. standard, surround, game).
+      required: false
+      example: "surround"
+      selector:
+        text:
+    eq_preset:
+      name: EQ Preset
+      description: Equalizer preset name to apply.
+      required: false
+      example: "Bass Boost"
+      selector:
+        text:
+    night_mode:
+      name: Night Mode
+      description: Enable or disable night mode.
+      required: false
+      example: true
+      selector:
+        boolean:
+    woofer_level:
+      name: Woofer Level
+      description: Subwoofer level, from -6 dB to +6 dB.
+      required: false
+      example: 3
+      selector:
+        number:
+          min: -6
+          max: 6
+          step: 1

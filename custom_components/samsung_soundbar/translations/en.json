@@ -87,6 +87,28 @@
           "description": "Where the rear speakers should be positioned relative to the listener."
         }
       }
+    },
+    "apply_preset": {
+      "name": "Apply preset",
+      "description": "Apply a sound profile atomically. Only the fields you provide are changed.",
+      "fields": {
+        "sound_mode": {
+          "name": "Sound mode",
+          "description": "Sound mode to set (e.g. standard, surround, game)."
+        },
+        "eq_preset": {
+          "name": "EQ preset",
+          "description": "Equalizer preset name to apply."
+        },
+        "night_mode": {
+          "name": "Night mode",
+          "description": "Enable or disable night mode."
+        },
+        "woofer_level": {
+          "name": "Woofer level",
+          "description": "Subwoofer level, from -6 dB to +6 dB."
+        }
+      }
     }
   },
   "entity": {
@@ -127,6 +149,17 @@
       "volume": {
         "name": "Volume"
       }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "sound_mode_changed": "Sound mode changed",
+      "playback_started": "Playback started",
+      "playback_paused": "Playback paused",
+      "playback_stopped": "Playback stopped",
+      "night_mode_on": "Night mode turned on",
+      "night_mode_off": "Night mode turned off",
+      "input_source_changed": "Input source changed"
     }
   }
 }
