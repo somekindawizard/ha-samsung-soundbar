@@ -1,0 +1,13 @@
+{
+  "domain": "samsung_soundbar_test",
+  "name": "Samsung Soundbar (Test)",
+  "codeowners": ["@somekindawizard"],
+  "config_flow": true,
+  "documentation": "https://github.com/somekindawizard/ha-samsung-soundbar",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/somekindawizard/ha-samsung-soundbar/issues",
+  "loggers": ["custom_components.samsung_soundbar_test"],
+  "requirements": [],
+  "version": "1.0.0"
+}
