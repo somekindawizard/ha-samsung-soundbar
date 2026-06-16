@@ -60,6 +60,11 @@ PROP_SPACEFIT_SOUND = "x.com.samsung.networkaudio.spacefitSound"
 DEFAULT_POLL_INTERVAL = 30  # seconds
 TOKEN_REFRESH_BUFFER = 300  # refresh 5 min before expiry
 
+# Fallback sound modes shown before an OCF read has populated the real
+# list (e.g. while the soundbar is in standby and OCF isn't polled).
+# Overwritten by the device's reported modes once it is on.
+DEFAULT_SOUND_MODES = ["adaptive sound", "standard", "surround", "game"]
+
 
 # ── Enums ────────────────────────────────────────────────────────────
 class SpeakerChannel(StrEnum):

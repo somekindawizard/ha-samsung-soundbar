@@ -20,6 +20,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import SmartThingsClient, SoundbarAuthError
 from .const import (
     DEFAULT_POLL_INTERVAL,
+    DEFAULT_SOUND_MODES,
     HREF_ADVANCED_AUDIO,
     HREF_EQ,
     HREF_SOUNDMODE,
@@ -61,7 +62,9 @@ class SoundbarState:
 
     # Sound mode
     sound_mode: str = ""
-    supported_sound_modes: list[str] = field(default_factory=list)
+    supported_sound_modes: list[str] = field(
+        default_factory=lambda: list(DEFAULT_SOUND_MODES)
+    )
 
     # Advanced audio
     night_mode: bool = False

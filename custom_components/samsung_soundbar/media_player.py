@@ -23,6 +23,7 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_MAX_VOLUME,
+    DEFAULT_SOUND_MODES,
     DOMAIN,
     HREF_SOUNDMODE,
     OPT_ENABLE_HOMEKIT_COMPAT,
@@ -33,12 +34,7 @@ from .coordinator import SoundbarCoordinator, SoundbarState
 _LOGGER = logging.getLogger(__name__)
 
 # Fallback sound modes shown in the UI before the first OCF poll completes.
-_DEFAULT_SOUND_MODES = [
-    "adaptive sound",
-    "standard",
-    "surround",
-    "game",
-]
+_DEFAULT_SOUND_MODES = DEFAULT_SOUND_MODES
 
 # Base features always available on the soundbar.
 _BASE_FEATURES = (

@@ -22,6 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_DEVICE_ID,
+    DEFAULT_SOUND_MODES,
     DOMAIN,
     HREF_EQ,
     HREF_SOUNDMODE,
@@ -96,7 +97,11 @@ class SoundModeSelect(_SoundbarSelect):
     @property
     def options(self) -> list[str]:
         data = self.coordinator.data
-        return data.supported_sound_modes if data else []
+        if not data:
+            return list(DEFAULT_SOUND_MODES)
+        # Fall back to the known modes if OCF hasn't populated the list
+        # yet (e.g. the soundbar has been in standby since startup).
+        return data.supported_sound_modes or DEFAULT_SOUND_MODES
 
     @property
     def current_option(self) -> str | None:
