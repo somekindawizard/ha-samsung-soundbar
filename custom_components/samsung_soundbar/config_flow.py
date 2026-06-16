@@ -35,6 +35,24 @@ _LOGGER = logging.getLogger(__name__)
 REDIRECT_URI = "https://api.smartthings.com/oauth/callback"
 SCOPES = "r:devices:* x:devices:* r:locations:*"
 
+# Capabilities that mark a SmartThings device as an audio device the
+# integration can drive. Used to filter the device picker so the user
+# isn't shown every light/sensor/lock on their account.
+_AUDIO_CAPABILITIES = {
+    "samsungvd.audioInputSource",
+    "mediaPlayback",
+    "audioVolume",
+}
+
+
+def _is_audio_device(device: dict) -> bool:
+    """Return True if the device exposes audio capabilities."""
+    for component in device.get("components", []):
+        cap_ids = {c.get("id") for c in component.get("capabilities", [])}
+        if cap_ids & _AUDIO_CAPABILITIES:
+            return True
+    return False
+
 
 class SamsungSoundbarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -239,9 +257,14 @@ class SamsungSoundbarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._devices = await client.list_devices()
             if not self._devices:
                 return self.async_abort(reason="no_devices")
+        # Prefer audio devices; fall back to the full list so an unusual
+        # soundbar that doesn't report standard audio caps is still
+        # selectable rather than the picker being empty.
+        audio_devices = [d for d in self._devices if _is_audio_device(d)]
+        devices_to_show = audio_devices or self._devices
         device_options = {
             d["deviceId"]: d.get("label") or d.get("name", d["deviceId"])
-            for d in self._devices
+            for d in devices_to_show
         }
         return self.async_show_form(
             step_id="device",
