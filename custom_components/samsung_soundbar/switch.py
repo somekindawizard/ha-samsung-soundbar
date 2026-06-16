@@ -10,7 +10,7 @@ Exposes advanced audio toggles as switches:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
@@ -27,6 +27,7 @@ from .const import (
     HREF_ACTIVE_VOICE_AMP,
     HREF_SPACEFIT_SOUND,
     OPT_ENABLE_ADVANCED_AUDIO,
+    OPT_ENABLE_HOMEKIT_COMPAT,
     PROP_BASS_BOOST,
     PROP_NIGHTMODE,
     PROP_VOICE_AMP,
@@ -104,18 +105,21 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: SoundbarCoordinator = hass.data[DOMAIN][entry.entry_id]
-
-    if not coordinator.options.get(OPT_ENABLE_ADVANCED_AUDIO, True):
-        return
-
     device_id = entry.data[CONF_DEVICE_ID]
-    async_add_entities(
-        [
+
+    entities: list[SwitchEntity] = []
+    if coordinator.options.get(OPT_ENABLE_ADVANCED_AUDIO, True):
+        entities.extend(
             SoundbarSwitch(coordinator, device_id, defn)
             for defn in SWITCH_DEFINITIONS
-        ],
-        update_before_add=False,
-    )
+        )
+    # Power on/off as a plain switch, for Apple Home (where the media
+    # player isn't bridged) and for simple dashboard/automation control.
+    if coordinator.options.get(OPT_ENABLE_HOMEKIT_COMPAT, False):
+        entities.append(SoundbarPowerSwitch(coordinator, device_id))
+
+    if entities:
+        async_add_entities(entities, update_before_add=False)
 
 
 class SoundbarSwitch(CoordinatorEntity[SoundbarCoordinator], SwitchEntity):
@@ -185,3 +189,54 @@ class SoundbarSwitch(CoordinatorEntity[SoundbarCoordinator], SwitchEntity):
         if self._defn.has_readback:
             self._optimistic_state = None
         super()._handle_coordinator_update()
+
+
+class SoundbarPowerSwitch(CoordinatorEntity[SoundbarCoordinator], SwitchEntity):
+    """Soundbar power on/off as a standalone switch.
+
+    The power state is read back from the device's switch capability, so
+    no optimistic-state stickiness is needed.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Power"
+    _attr_icon = "mdi:power"
+
+    def __init__(
+        self,
+        coordinator: SoundbarCoordinator,
+        device_id: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_id = device_id
+        self._attr_unique_id = f"{device_id}_power"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        data: SoundbarState = self.coordinator.data
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self.coordinator.device_name,
+            manufacturer=data.manufacturer if data else "Samsung",
+            model=data.model if data else "",
+            sw_version=data.firmware_version if data else "",
+        )
+
+    @property
+    def is_on(self) -> bool:
+        data = self.coordinator.data
+        return bool(data and data.power)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.send_switch_command(self._device_id, True)
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, power=True)
+            )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.send_switch_command(self._device_id, False)
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, power=False)
+            )

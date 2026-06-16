@@ -59,10 +59,10 @@
           "enable_advanced_audio": "Advanced Audio switches (Night Mode, Voice Amplifier, Bass Boost)",
           "enable_woofer": "Woofer level control",
           "enable_eq": "Equalizer preset selector",
-          "enable_homekit_compat": "Apple Home compatibility (TV + fan controls)"
+          "enable_homekit_compat": "Apple Home compatibility (fan + power controls)"
         },
         "data_description": {
-          "enable_homekit_compat": "For the Apple Home app via HomeKit Bridge. Exposes the soundbar as a TV-type accessory (native power, source, and volume) and adds Volume and Subwoofer 'fan' entities, since Apple Home can only show an audio level as a fan-speed slider. Leave off if you don't use HomeKit."
+          "enable_homekit_compat": "For the Apple Home app via HomeKit Bridge. Adds Volume and Subwoofer 'fan' entities (Apple Home can only show an audio level as a fan-speed slider, and a fan also lets Siri 'set Soundbar to 20%') plus a Power switch. Leave off if you don't use HomeKit."
         }
       }
     }
@@ -131,6 +131,9 @@
       },
       "space_fit_sound": {
         "name": "Space fit sound"
+      },
+      "power": {
+        "name": "Power"
       }
     },
     "select": {
