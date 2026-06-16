@@ -2,6 +2,7 @@
 from __future__ import annotations
 import logging
 from typing import Any, Mapping
+from urllib.parse import parse_qs, urlparse
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
@@ -52,6 +53,25 @@ def _is_audio_device(device: dict) -> bool:
         if cap_ids & _AUDIO_CAPABILITIES:
             return True
     return False
+
+
+def _extract_auth_code(raw: str) -> str:
+    """Pull the OAuth authorization code out of a pasted value.
+
+    Accepts the whole redirected URL from the browser's address bar, a
+    bare ``code=...`` fragment, or just the code itself.
+    """
+    raw = (raw or "").strip()
+    if "code=" in raw:
+        # Full URL -> use its query string; otherwise treat the input
+        # itself as the query (handles a pasted "code=...&..." fragment).
+        query = urlparse(raw).query or raw
+        codes = parse_qs(query).get("code")
+        if codes and codes[0].strip():
+            return codes[0].strip()
+        # Last resort: manual split.
+        return raw.split("code=", 1)[1].split("&", 1)[0].strip()
+    return raw
 
 
 class SamsungSoundbarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -157,7 +177,7 @@ class SamsungSoundbarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_authorize(self, user_input=None):
         errors = {}
         if user_input is not None:
-            code = user_input["auth_code"].strip()
+            code = _extract_auth_code(user_input["auth_code"])
             session = async_get_clientsession(self.hass)
             try:
                 self._token_data = await exchange_code_for_tokens(
@@ -301,7 +321,7 @@ class SamsungSoundbarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Re-authenticate via OAuth: collect a new authorization code."""
         errors = {}
         if user_input is not None:
-            code = user_input["auth_code"].strip()
+            code = _extract_auth_code(user_input["auth_code"])
             session = async_get_clientsession(self.hass)
             try:
                 token_data = await exchange_code_for_tokens(
