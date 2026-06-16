@@ -22,14 +22,18 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_DEVICE_ID,
+    DEFAULT_SOUND_MODES,
     DOMAIN,
     HREF_ADVANCED_AUDIO,
     HREF_ACTIVE_VOICE_AMP,
+    HREF_SOUNDMODE,
     HREF_SPACEFIT_SOUND,
     OPT_ENABLE_ADVANCED_AUDIO,
     OPT_ENABLE_HOMEKIT_COMPAT,
+    OPT_ENABLE_SOUNDMODE,
     PROP_BASS_BOOST,
     PROP_NIGHTMODE,
+    PROP_SOUNDMODE,
     PROP_VOICE_AMP,
     PROP_ACTIVE_VOICE_AMP,
     PROP_SPACEFIT_SOUND,
@@ -113,10 +117,20 @@ async def async_setup_entry(
             SoundbarSwitch(coordinator, device_id, defn)
             for defn in SWITCH_DEFINITIONS
         )
-    # Power on/off as a plain switch, for Apple Home (where the media
-    # player isn't bridged) and for simple dashboard/automation control.
+    # Discrete Power / Mute / per-sound-mode switches for Apple Home
+    # (where the media player isn't bridged) and simple dashboard control.
     if coordinator.options.get(OPT_ENABLE_HOMEKIT_COMPAT, False):
         entities.append(SoundbarPowerSwitch(coordinator, device_id))
+        entities.append(SoundbarMuteSwitch(coordinator, device_id))
+        if coordinator.options.get(OPT_ENABLE_SOUNDMODE, True):
+            modes = (
+                coordinator.data.supported_sound_modes
+                if coordinator.data
+                else None
+            ) or DEFAULT_SOUND_MODES
+            entities.extend(
+                SoundModeSwitch(coordinator, device_id, mode) for mode in modes
+            )
 
     if entities:
         async_add_entities(entities, update_before_add=False)
@@ -240,3 +254,109 @@ class SoundbarPowerSwitch(CoordinatorEntity[SoundbarCoordinator], SwitchEntity):
             self.coordinator.async_set_updated_data(
                 replace(self.coordinator.data, power=False)
             )
+
+
+class SoundbarMuteSwitch(CoordinatorEntity[SoundbarCoordinator], SwitchEntity):
+    """Soundbar mute as a standalone switch."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Mute"
+    _attr_icon = "mdi:volume-mute"
+
+    def __init__(
+        self,
+        coordinator: SoundbarCoordinator,
+        device_id: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_id = device_id
+        self._attr_unique_id = f"{device_id}_mute"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        data: SoundbarState = self.coordinator.data
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self.coordinator.device_name,
+            manufacturer=data.manufacturer if data else "Samsung",
+            model=data.model if data else "",
+            sw_version=data.firmware_version if data else "",
+        )
+
+    @property
+    def is_on(self) -> bool:
+        data = self.coordinator.data
+        return bool(data and data.muted)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.send_standard_command(
+            self._device_id, "audioMute", "mute"
+        )
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, muted=True)
+            )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.send_standard_command(
+            self._device_id, "audioMute", "unmute"
+        )
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, muted=False)
+            )
+
+
+class SoundModeSwitch(CoordinatorEntity[SoundbarCoordinator], SwitchEntity):
+    """One switch per sound mode; turning it on selects that mode.
+
+    These behave like radio buttons: ``is_on`` reflects the active mode,
+    so selecting one shows the others as off. Turning the active mode
+    off is a no-op (a soundbar always has some mode).
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:surround-sound"
+
+    def __init__(
+        self,
+        coordinator: SoundbarCoordinator,
+        device_id: str,
+        mode: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_id = device_id
+        self._mode = mode
+        self._attr_name = mode.title()
+        slug = mode.replace(" ", "_").lower()
+        self._attr_unique_id = f"{device_id}_sound_mode_{slug}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        data: SoundbarState = self.coordinator.data
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self.coordinator.device_name,
+            manufacturer=data.manufacturer if data else "Samsung",
+            model=data.model if data else "",
+            sw_version=data.firmware_version if data else "",
+        )
+
+    @property
+    def is_on(self) -> bool:
+        data = self.coordinator.data
+        return bool(data and data.sound_mode == self._mode)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.send_execute_command(
+            self._device_id, HREF_SOUNDMODE, {PROP_SOUNDMODE: self._mode}
+        )
+        if self.coordinator.data:
+            self.coordinator.async_set_updated_data(
+                replace(self.coordinator.data, sound_mode=self._mode)
+            )
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        # Can't "unset" a mode; re-assert state so the toggle snaps back.
+        self.async_write_ha_state()

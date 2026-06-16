@@ -134,6 +134,9 @@
       },
       "power": {
         "name": "Power"
+      },
+      "mute": {
+        "name": "Mute"
       }
     },
     "select": {

@@ -98,12 +98,10 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
         if not data:
             return features
 
-        # Media transport controls from mediaPlayback capability
+        # Media transport from mediaPlayback capability. Play/Pause are
+        # intentionally omitted (they're unreliable for live TV/HDMI
+        # audio on the soundbar); Stop is kept when supported.
         playback_cmds = data.supported_playback_commands
-        if "play" in playback_cmds:
-            features |= MediaPlayerEntityFeature.PLAY
-        if "pause" in playback_cmds:
-            features |= MediaPlayerEntityFeature.PAUSE
         if "stop" in playback_cmds:
             features |= MediaPlayerEntityFeature.STOP
 
