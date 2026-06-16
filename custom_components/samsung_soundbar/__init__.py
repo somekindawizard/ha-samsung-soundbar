@@ -32,6 +32,7 @@ from .const import (
     HREF_WOOFER,
     OPT_ENABLE_ADVANCED_AUDIO,
     OPT_ENABLE_EQ,
+    OPT_ENABLE_HOMEKIT_COMPAT,
     OPT_ENABLE_SOUNDMODE,
     OPT_ENABLE_WOOFER,
     PROP_CHANNEL_VOLUME,
@@ -54,6 +55,7 @@ PLATFORMS: list[Platform] = [
     Platform.NUMBER,
     Platform.SENSOR,
     Platform.BUTTON,
+    Platform.FAN,
 ]
 
 SERVICE_SET_SPEAKER_LEVEL = "set_speaker_level"
@@ -239,6 +241,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         OPT_ENABLE_ADVANCED_AUDIO: entry.options.get(OPT_ENABLE_ADVANCED_AUDIO, True),
         OPT_ENABLE_WOOFER: entry.options.get(OPT_ENABLE_WOOFER, True),
         OPT_ENABLE_EQ: entry.options.get(OPT_ENABLE_EQ, False),
+        OPT_ENABLE_HOMEKIT_COMPAT: entry.options.get(OPT_ENABLE_HOMEKIT_COMPAT, False),
     }
 
     coordinator = SoundbarCoordinator(

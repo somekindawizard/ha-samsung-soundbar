@@ -19,6 +19,10 @@ OPT_ENABLE_SOUNDMODE = "enable_soundmode"
 OPT_ENABLE_EQ = "enable_eq"
 OPT_ENABLE_ADVANCED_AUDIO = "enable_advanced_audio"
 OPT_ENABLE_WOOFER = "enable_woofer"
+# Apple Home / HomeKit compatibility: expose the player as a TV-type
+# (receiver) accessory and add fan-based volume + subwoofer controls so
+# they surface as sliders in the Apple Home app.
+OPT_ENABLE_HOMEKIT_COMPAT = "enable_homekit_compat"
 
 # ── SmartThings API ──────────────────────────────────────────────────
 ST_API_BASE = "https://api.smartthings.com/v1"

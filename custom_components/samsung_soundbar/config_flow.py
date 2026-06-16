@@ -26,6 +26,7 @@ from .const import (
     DOMAIN,
     OPT_ENABLE_ADVANCED_AUDIO,
     OPT_ENABLE_EQ,
+    OPT_ENABLE_HOMEKIT_COMPAT,
     OPT_ENABLE_SOUNDMODE,
     OPT_ENABLE_WOOFER,
 )
@@ -391,5 +392,6 @@ class SamsungSoundbarOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(OPT_ENABLE_ADVANCED_AUDIO, default=self._config_entry.options.get(OPT_ENABLE_ADVANCED_AUDIO, True)): bool,
                 vol.Optional(OPT_ENABLE_WOOFER, default=self._config_entry.options.get(OPT_ENABLE_WOOFER, True)): bool,
                 vol.Optional(OPT_ENABLE_EQ, default=self._config_entry.options.get(OPT_ENABLE_EQ, False)): bool,
+                vol.Optional(OPT_ENABLE_HOMEKIT_COMPAT, default=self._config_entry.options.get(OPT_ENABLE_HOMEKIT_COMPAT, False)): bool,
             }),
         )

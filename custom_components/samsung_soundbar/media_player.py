@@ -25,6 +25,7 @@ from .const import (
     CONF_MAX_VOLUME,
     DOMAIN,
     HREF_SOUNDMODE,
+    OPT_ENABLE_HOMEKIT_COMPAT,
     PROP_SOUNDMODE,
 )
 from .coordinator import SoundbarCoordinator, SoundbarState
@@ -70,7 +71,6 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
 
     _attr_has_entity_name = True
     _attr_name = None  # Use device name directly
-    _attr_device_class = MediaPlayerDeviceClass.SPEAKER
 
     def __init__(
         self,
@@ -82,6 +82,13 @@ class SoundbarMediaPlayer(CoordinatorEntity[SoundbarCoordinator], MediaPlayerEnt
         self._device_id = entry.data[CONF_DEVICE_ID]
         self._max_volume = max_volume
         self._attr_unique_id = f"{self._device_id}_media_player"
+        # In Apple Home compatibility mode, present as a receiver so HA's
+        # HomeKit Bridge exposes a Television accessory (native power,
+        # source picker, and volume). Otherwise a plain speaker.
+        if coordinator.options.get(OPT_ENABLE_HOMEKIT_COMPAT, False):
+            self._attr_device_class = MediaPlayerDeviceClass.RECEIVER
+        else:
+            self._attr_device_class = MediaPlayerDeviceClass.SPEAKER
 
     @property
     def supported_features(self) -> MediaPlayerEntityFeature:
