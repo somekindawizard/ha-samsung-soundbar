@@ -10,7 +10,7 @@ from homeassistant.const import Platform
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SmartThingsClient, TokenData
@@ -60,18 +60,22 @@ SERVICE_SET_SPEAKER_LEVEL = "set_speaker_level"
 SERVICE_SET_REAR_SPEAKER_MODE = "set_rear_speaker_mode"
 SERVICE_APPLY_PRESET = "apply_preset"
 
+# Services use a device target in services.yaml, so HA merges the selected
+# device_id/entity_id/area_id into call.data — the schemas must accept them.
 SCHEMA_SET_SPEAKER_LEVEL = vol.Schema(
     {
         vol.Required("speaker_channel"): vol.In(
             [e.value for e in SpeakerChannel]
         ),
         vol.Required("level"): vol.All(int, vol.Range(min=-6, max=6)),
+        **cv.TARGET_SERVICE_FIELDS,
     }
 )
 
 SCHEMA_SET_REAR_SPEAKER_MODE = vol.Schema(
     {
         vol.Required("mode"): vol.In([e.value for e in RearSpeakerMode]),
+        **cv.TARGET_SERVICE_FIELDS,
     }
 )
 
@@ -81,6 +85,7 @@ SCHEMA_APPLY_PRESET = vol.Schema(
         vol.Optional("eq_preset"): str,
         vol.Optional("night_mode"): bool,
         vol.Optional("woofer_level"): vol.All(int, vol.Range(min=-6, max=6)),
+        **cv.TARGET_SERVICE_FIELDS,
     }
 )
 
@@ -213,8 +218,27 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
     )
 
 
+def _build_options(entry: ConfigEntry) -> dict[str, bool]:
+    return {
+        OPT_ENABLE_SOUNDMODE: entry.options.get(OPT_ENABLE_SOUNDMODE, True),
+        OPT_ENABLE_ADVANCED_AUDIO: entry.options.get(OPT_ENABLE_ADVANCED_AUDIO, True),
+        OPT_ENABLE_WOOFER: entry.options.get(OPT_ENABLE_WOOFER, True),
+        OPT_ENABLE_EQ: entry.options.get(OPT_ENABLE_EQ, False),
+    }
+
+
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the integration when options change."""
+    """Reload the integration when options change.
+
+    The coordinator also calls async_update_entry to persist refreshed
+    OAuth tokens, which fires this listener too — skip the reload in
+    that case, otherwise every token refresh tears down the entry.
+    """
+    coordinator: SoundbarCoordinator | None = hass.data.get(DOMAIN, {}).get(
+        entry.entry_id
+    )
+    if coordinator and _build_options(entry) == coordinator.options:
+        return
     await hass.config_entries.async_reload(entry.entry_id)
 
 
@@ -234,12 +258,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         token_data=token_data,
     )
 
-    options = {
-        OPT_ENABLE_SOUNDMODE: entry.options.get(OPT_ENABLE_SOUNDMODE, True),
-        OPT_ENABLE_ADVANCED_AUDIO: entry.options.get(OPT_ENABLE_ADVANCED_AUDIO, True),
-        OPT_ENABLE_WOOFER: entry.options.get(OPT_ENABLE_WOOFER, True),
-        OPT_ENABLE_EQ: entry.options.get(OPT_ENABLE_EQ, False),
-    }
+    options = _build_options(entry)
 
     coordinator = SoundbarCoordinator(
         hass=hass,
